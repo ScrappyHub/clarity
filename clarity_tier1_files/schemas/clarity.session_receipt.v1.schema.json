@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "clarity.session_receipt.v1.schema.json",
+  "title": "Clarity Session Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "receipt_type",
+    "created_at_utc",
+    "session_id",
+    "event_type",
+    "ok",
+    "operator_principal",
+    "target_content_ref",
+    "target_packet_id",
+    "receipt_hash",
+    "prev_receipt_hash"
+  ],
+  "properties": {
+    "schema": { "const": "clarity.session_receipt.v1" },
+    "receipt_type": {
+      "type": "string",
+      "enum": [
+        "session_created",
+        "launch_requested",
+        "launch_blocked",
+        "session_started",
+        "session_ended",
+        "session_replayed",
+        "quarantine_attached",
+        "quarantine_released",
+        "destroy_requested",
+        "destroy_completed"
+      ]
+    },
+    "created_at_utc": { "type": "string", "format": "date-time" },
+    "session_id": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "event_type": { "type": "string", "minLength": 1 },
+    "ok": { "type": "boolean" },
+    "operator_principal": { "type": "string", "minLength": 1 },
+    "target_content_ref": { "type": "string", "pattern": "^cas:sha256:[0-9a-f]{64}$" },
+    "target_packet_id": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "environment_id": { "type": "string" },
+    "policy_decision": { "type": "string" },
+    "verification_state": { "type": "string" },
+    "session_state": { "type": "string" },
+    "details_ref": { "type": "string", "pattern": "^cas:sha256:[0-9a-f]{64}$" },
+    "receipt_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "prev_receipt_hash": {
+      "type": "string",
+      "pattern": "^(GENESIS|[0-9a-f]{64})$"
+    }
+  }
+}

@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "clarity.session.v1.schema.json",
+  "title": "Clarity Session v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "session_id",
+    "session_type",
+    "created_at_utc",
+    "operator_principal",
+    "target_content_ref",
+    "target_packet_id",
+    "target_sha256",
+    "launch_mode",
+    "environment_id",
+    "policy_decision",
+    "verification_state",
+    "session_state",
+    "prev_links"
+  ],
+  "properties": {
+    "schema": { "const": "clarity.session.v1" },
+    "session_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 identity of canonical session object bytes or equivalent locked session id derivation."
+    },
+    "session_type": {
+      "type": "string",
+      "enum": [
+        "inspect_only",
+        "sandbox_analysis",
+        "hyperv_analysis",
+        "replay_only",
+        "quarantine_review"
+      ]
+    },
+    "created_at_utc": { "type": "string", "format": "date-time" },
+    "operator_principal": { "type": "string", "minLength": 1 },
+    "target_content_ref": {
+      "type": "string",
+      "pattern": "^cas:sha256:[0-9a-f]{64}$"
+    },
+    "target_packet_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "target_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "launch_mode": {
+      "type": "string",
+      "enum": [
+        "read_only",
+        "inspect_only",
+        "sandbox_no_network",
+        "sandbox_limited_network",
+        "hyperv_no_network",
+        "hyperv_limited_network"
+      ]
+    },
+    "environment_id": { "type": "string", "minLength": 1 },
+    "policy_decision": {
+      "type": "string",
+      "enum": [
+        "allow",
+        "deny",
+        "inspect_only",
+        "release",
+        "archive",
+        "destroy"
+      ]
+    },
+    "verification_state": {
+      "type": "string",
+      "enum": [
+        "verified",
+        "not_verified",
+        "verification_failed",
+        "sealed",
+        "signature_failed",
+        "hash_failed"
+      ]
+    },
+    "session_state": {
+      "type": "string",
+      "enum": [
+        "created",
+        "launch_requested",
+        "launch_blocked",
+        "running",
+        "ended",
+        "replayed",
+        "released",
+        "destroyed"
+      ]
+    },
+    "started_at_utc": { "type": "string", "format": "date-time" },
+    "ended_at_utc": { "type": "string", "format": "date-time" },
+    "result": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "success",
+        "failure",
+        "blocked",
+        "terminated",
+        "released",
+        "destroyed"
+      ]
+    },
+    "prev_links": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+    },
+    "notes_ref": {
+      "type": "string",
+      "pattern": "^cas:sha256:[0-9a-f]{64}$"
+    }
+  }
+}

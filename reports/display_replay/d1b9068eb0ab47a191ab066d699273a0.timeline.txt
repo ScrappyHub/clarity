@@ -1,0 +1,3 @@
+2026-03-07T16:14:07Z | clarity.display.session.opened.v1 | open | protected_review
+2026-03-07T16:14:07Z | clarity.display.adapter.windows_sandbox.requested.v1 | requested | request_written
+2026-03-07T16:14:08Z | clarity.display.session.closed.v1 | closed | session_closed

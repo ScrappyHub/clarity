@@ -1,0 +1,50 @@
+﻿{
+  "version": "clarity_rules_v1_2",
+  "scan": {
+    "max_findings_default": 200,
+    "max_seconds_default": 20,
+    "max_files_default": 5000,
+    "max_depth_default": 5,
+
+    "targets_fast_points": [
+      "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup",
+      "%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup",
+      "%LOCALAPPDATA%\\Temp",
+      "C:\\Windows\\Temp"
+    ],
+
+    "critical_prefixes": [
+      "C:\\Windows\\System32",
+      "C:\\Windows\\SysWOW64",
+      "C:\\Windows\\System32\\drivers",
+      "C:\\Windows\\Boot",
+      "C:\\Program Files",
+      "C:\\Program Files (x86)"
+    ],
+
+    "skip_dir_names": [
+      "node_modules",".git",".svn",".hg",
+      "WindowsApps","$Recycle.Bin","System Volume Information",
+      "Packages","TempState","INetCache","Cache","Caches",
+      "OneDrive","OneDriveTemp","OneDriveStandaloneUpdater",
+      "MicrosoftEdge","Edge","Chrome","Mozilla","BraveSoftware"
+    ]
+  },
+
+  "suspicion": {
+    "startup_bad_extensions": [".js",".jse",".vbs",".vbe",".wsf",".wsh",".hta",".ps1",".psm1",".cmd",".bat",".scr",".pif",".lnk"],
+    "temp_exec_extensions": [".exe",".dll",".ps1"],
+    "double_extension_regex": "\\.(pdf|doc|docx|xls|xlsx|jpg|png)\\.(exe|scr|bat|cmd)$"
+  },
+
+  "quarantine": {
+    "default_mode": "CopyOnly",
+    "default_block_method": "Marker",
+    "allowed_block_roots": [
+      "C:\\Users",
+      "C:\\Windows\\Temp",
+      "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"
+    ],
+    "max_vault_copy_mb": 25
+  }
+}

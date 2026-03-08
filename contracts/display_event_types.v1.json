@@ -1,0 +1,11 @@
+{
+  "schema": "event_types.v1",
+  "producer": "clarity",
+  "types": [
+    "clarity.display.session.opened.v1",
+    "clarity.display.session.closed.v1",
+    "clarity.display.adapter.windows_sandbox.requested.v1",
+    "clarity.display.adapter.windows_sandbox.launched.v1",
+    "clarity.display.adapter.windows_sandbox.launch_failed.v1"
+  ]
+}

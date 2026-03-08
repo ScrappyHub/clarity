@@ -1,0 +1,30 @@
+{
+  "schema": "clarity.display_session.schema.v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "session_id",
+    "tenant",
+    "principal",
+    "producer_instance",
+    "content_ref",
+    "adapter",
+    "display_mode",
+    "opened_at_utc",
+    "status"
+  ],
+  "properties": {
+    "schema": { "type": "string" },
+    "session_id": { "type": "string" },
+    "tenant": { "type": "string" },
+    "principal": { "type": "string" },
+    "producer_instance": { "type": "string" },
+    "content_ref": { "type": "string" },
+    "adapter": { "type": "string" },
+    "display_mode": { "type": "string" },
+    "opened_at_utc": { "type": "string" },
+    "closed_at_utc": { "type": ["string","null"] },
+    "status": { "type": "string" },
+    "meta": { "type": ["object","null"] }
+  }
+}

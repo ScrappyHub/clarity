@@ -1,0 +1,375 @@
+﻿param(
+  [Parameter(Mandatory=$false)][ValidateSet("scan","view","restore","status","disable","enable")] [string]$Command = "scan",
+  [Parameter(Mandatory=$false)][string]$RunRoot = "",
+  [Parameter(Mandatory=$false)][string]$VaultRoot = "",
+  [Parameter(Mandatory=$false)][string]$TargetRoot = "C:\",
+  [Parameter(Mandatory=$false)][switch]$ReadOnly,
+  [Parameter(Mandatory=$false)][switch]$FullScan,
+  [Parameter(Mandatory=$false)][int]$MaxFindings = 200,
+  [Parameter(Mandatory=$false)][int]$DisableMinutes = 30,
+  [Parameter(Mandatory=$false)][string]$DisableReason = ""
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+function New-RunId {
+  $ts = (Get-Date).ToUniversalTime().ToString("yyyyMMdd_HHmmssZ")
+  $rnd = ([Guid]::NewGuid().ToString("N").Substring(0,8)).ToUpperInvariant()
+  return "CRUN_${ts}_$rnd"
+}
+
+function Ensure-Dir([string]$p) {
+  if (-not (Test-Path -LiteralPath $p)) { New-Item -ItemType Directory -Force -Path $p | Out-Null }
+}
+
+function Get-Sha256File([string]$path) {
+  # Returns lowercase hex
+  return (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+}
+
+function Write-Text([string]$path, [string]$content) {
+  $dir = Split-Path -Parent $path
+  Ensure-Dir $dir
+  Set-Content -LiteralPath $path -Value $content -Encoding UTF8
+}
+
+function Append-Text([string]$path, [string]$line) {
+  $dir = Split-Path -Parent $path
+  Ensure-Dir $dir
+  Add-Content -LiteralPath $path -Value $line -Encoding UTF8
+}
+
+function Json([object]$o) {
+  return ($o | ConvertTo-Json -Depth 8)
+}
+
+function Get-DefaultRunRoot {
+  $base = Join-Path $env:ProgramData "Clarity\runs"
+  Ensure-Dir $base
+  return $base
+}
+
+function Get-DefaultVaultRoot {
+  $base = Join-Path $env:ProgramData "Clarity\vault"
+  Ensure-Dir $base
+  return $base
+}
+
+function Get-DisableStatePath {
+  $base = Join-Path $env:ProgramData "Clarity\state"
+  Ensure-Dir $base
+  return (Join-Path $base "disable_state.json")
+}
+
+function Get-IsDisabled {
+  $p = Get-DisableStatePath
+  if (-not (Test-Path -LiteralPath $p)) { return $false }
+  $st = Get-Content -Raw -LiteralPath $p | ConvertFrom-Json
+  $now = (Get-Date).ToUniversalTime()
+  $until = [DateTime]::Parse($st.disabled_until_utc)
+  if ($now -ge $until) { return $false }
+  return $true
+}
+
+function Clear-DisableState {
+  $p = Get-DisableStatePath
+  if (Test-Path -LiteralPath $p) { Remove-Item -Force -LiteralPath $p }
+}
+
+function Set-DisableState([int]$minutes, [string]$reason, [string]$artifactDir) {
+  $now = (Get-Date).ToUniversalTime()
+  $until = $now.AddMinutes($minutes)
+  $state = [ordered]@{
+    disabled_at_utc = $now.ToString("o")
+    disabled_until_utc = $until.ToString("o")
+    reason = $reason
+    artifact_dir = $artifactDir
+  }
+  Write-Text (Get-DisableStatePath) (Json $state)
+}
+
+function Require-PhysicalPresence {
+  # Canonical v1: require interactive confirmation (placeholder for BIOS/admin pwd/USB key)
+  Write-Host ""
+  Write-Host "CLARITY: PHYSICAL PRESENCE CHECK" -ForegroundColor Cyan
+  Write-Host "Type EXACTLY: I AM HERE" -ForegroundColor Yellow
+  $resp = Read-Host "Confirm"
+  if ($resp -ne "I AM HERE") { throw "Physical presence check failed." }
+}
+
+function Get-TargetList([string]$root, [switch]$fullScan) {
+  # v1 fast points: high-signal startup and system paths (Windows-oriented)
+  $targets = New-Object System.Collections.Generic.List[string]
+
+  # Boot/system high-signal (safe read)
+  $candidates = @(
+    (Join-Path $root "Windows\System32"),
+    (Join-Path $root "Windows\SysWOW64"),
+    (Join-Path $root "Windows\System32\drivers"),
+    (Join-Path $root "Program Files"),
+    (Join-Path $root "Program Files (x86)"),
+    (Join-Path $root "ProgramData\Microsoft\Windows\Start Menu\Programs\Startup"),
+    (Join-Path $root "Users")
+  )
+
+  foreach ($c in $candidates) {
+    if (Test-Path -LiteralPath $c) { $targets.Add($c) }
+  }
+
+  if ($fullScan) {
+    # Expand to whole drive root (still filtered to files below)
+    if (Test-Path -LiteralPath $root) { $targets.Clear(); $targets.Add($root) }
+  }
+
+  return $targets
+}
+
+function Get-SuspicionReason([System.IO.FileInfo]$fi) {
+  # Deterministic ruleset v1 (minimal): suspicious extensions in startup-like locations, unsigned drivers not evaluated here
+  $path = $fi.FullName.ToLowerInvariant()
+  $name = $fi.Name.ToLowerInvariant()
+
+  # Common malware-ish drops (keep conservative to avoid nuking legit apps)
+  $badExt = @(".js",".jse",".vbs",".vbe",".wsf",".wsh",".hta",".ps1",".psm1",".cmd",".bat",".scr",".pif",".lnk")
+  $ext = $fi.Extension.ToLowerInvariant()
+
+  $isStartup = ($path -like "*\start menu\programs\startup\*") -or ($path -like "*\users\*\appdata\roaming\microsoft\windows\start menu\programs\startup\*")
+  if ($isStartup -and ($badExt -contains $ext)) {
+    return "R_STARTUP_SCRIPT_OR_LINK"
+  }
+
+  # Executables dropped in temp-ish user locations
+  $isTempish = ($path -like "*\appdata\local\temp\*") -or ($path -like "*\windows\temp\*")
+  if ($isTempish -and ($ext -eq ".exe" -or $ext -eq ".dll" -or $ext -eq ".ps1")) {
+    return "R_TEMP_EXECUTABLE"
+  }
+
+  # Double-extension tricks
+  if ($name -match "\.(pdf|doc|docx|xls|xlsx|jpg|png)\.(exe|scr|bat|cmd)$") {
+    return "R_DOUBLE_EXTENSION"
+  }
+
+  return $null
+}
+
+function Copy-ToVault([string]$src, [string]$vaultDir, [string]$reason) {
+  Ensure-Dir $vaultDir
+  $sha = Get-Sha256File $src
+  $leaf = Split-Path -Leaf $src
+  $dest = Join-Path $vaultDir ("{0}_{1}" -f $sha.Substring(0,12), $leaf)
+
+  Copy-Item -LiteralPath $src -Destination $dest -Force
+
+  # Sidecar metadata
+  $meta = [ordered]@{
+    original_path = $src
+    vault_path = $dest
+    sha256 = $sha
+    reason = $reason
+    isolated_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+  }
+  Write-Text ($dest + ".json") (Json $meta)
+
+  return [ordered]@{ sha256=$sha; original=$src; vault=$dest; reason=$reason }
+}
+
+function Write-Sha256Sums([string]$dir, [string[]]$pathsRelToDir) {
+  $out = Join-Path $dir "sha256sums.txt"
+  if (Test-Path -LiteralPath $out) { Remove-Item -Force -LiteralPath $out }
+  foreach ($rel in $pathsRelToDir) {
+    $p = Join-Path $dir $rel
+    if (Test-Path -LiteralPath $p) {
+      $h = Get-Sha256File $p
+      Append-Text $out ("{0}  {1}" -f $h, $rel.Replace("\","/"))
+    }
+  }
+}
+
+# Resolve roots
+if (-not $RunRoot -or $RunRoot.Trim() -eq "") { $RunRoot = Get-DefaultRunRoot }
+if (-not $VaultRoot -or $VaultRoot.Trim() -eq "") { $VaultRoot = Get-DefaultVaultRoot }
+
+# Main dispatcher
+$runId = New-RunId
+$runDir = Join-Path $RunRoot $runId
+$artifactDir = Join-Path $runDir "artifact"
+$vaultDir = Join-Path $VaultRoot $runId
+
+Ensure-Dir $artifactDir
+Ensure-Dir $vaultDir
+
+switch ($Command) {
+  "status" {
+    $disabled = Get-IsDisabled
+    Write-Host ("CLARITY status: {0}" -f ($(if($disabled){"DISABLED"}else{"ENABLED"}))) -ForegroundColor Cyan
+    if ($disabled) {
+      $st = Get-Content -Raw -LiteralPath (Get-DisableStatePath) | ConvertFrom-Json
+      Write-Host ("Disabled until (UTC): {0}" -f $st.disabled_until_utc)
+      Write-Host ("Reason: {0}" -f $st.reason)
+      Write-Host ("Artifact: {0}" -f $st.artifact_dir)
+    }
+    break
+  }
+
+  "disable" {
+    Require-PhysicalPresence
+    if (-not $DisableReason -or $DisableReason.Trim() -eq "") { $DisableReason = "user_requested" }
+
+    # Produce disable artifact (sealed)
+    $disable = [ordered]@{
+      clarity = "Clarity Validator"
+      action = "DISABLE"
+      disabled_minutes = $DisableMinutes
+      reason = $DisableReason
+      issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+      reenable_at_utc = (Get-Date).ToUniversalTime().AddMinutes($DisableMinutes).ToString("o")
+      mode = "windows_userland_v1"
+    }
+    Write-Text (Join-Path $artifactDir "disable.json") (Json $disable)
+    Write-Sha256Sums $artifactDir @("disable.json")
+
+    Set-DisableState -minutes $DisableMinutes -reason $DisableReason -artifactDir $artifactDir
+    Write-Host "CLARITY: disabled (time-bounded). Auto re-enables after window." -ForegroundColor Yellow
+    Write-Host ("Disable artifact: {0}" -f $artifactDir)
+    break
+  }
+
+  "enable" {
+    Require-PhysicalPresence
+    Clear-DisableState
+    $enable = [ordered]@{
+      clarity = "Clarity Validator"
+      action = "ENABLE"
+      issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+      mode = "windows_userland_v1"
+    }
+    Write-Text (Join-Path $artifactDir "enable.json") (Json $enable)
+    Write-Sha256Sums $artifactDir @("enable.json")
+    Write-Host "CLARITY: enabled." -ForegroundColor Green
+    Write-Host ("Enable artifact: {0}" -f $artifactDir)
+    break
+  }
+
+  "scan" {
+    if (Get-IsDisabled) {
+      Write-Host "CLARITY: validator is currently DISABLED (time-bounded). Exiting scan." -ForegroundColor Yellow
+      exit 2
+    }
+
+    $mode = "windows_userland_v1"
+    $bootVerification = [ordered]@{
+      status = "degraded"
+      reason = "BOOT_CHAIN_NOT_AVAILABLE_IN_USERLAND"
+    }
+
+    $targets = Get-TargetList -root $TargetRoot -fullScan:$FullScan
+
+    $verified = New-Object System.Collections.Generic.List[object]
+    $findings = New-Object System.Collections.Generic.List[object]
+
+    $fileCount = 0
+
+    foreach ($t in $targets) {
+      # Enumerate files conservatively; avoid reparse loops
+      Get-ChildItem -LiteralPath $t -File -Recurse -Force -ErrorAction SilentlyContinue |
+        ForEach-Object {
+          if ($findings.Count -ge $MaxFindings) { return }
+          $fi = $_
+          $fileCount++
+
+          # Hashing can be heavy; we only hash if it becomes a finding or is a small-ish file in targeted mode
+          $reason = Get-SuspicionReason $fi
+          if ($null -ne $reason) {
+            try {
+              $rec = Copy-ToVault -src $fi.FullName -vaultDir $vaultDir -reason $reason
+              $findings.Add([ordered]@{
+                path = $rec.original
+                sha256 = $rec.sha256
+                reason = $rec.reason
+                vault_path = $rec.vault
+              })
+            } catch {
+              $findings.Add([ordered]@{
+                path = $fi.FullName
+                sha256 = ""
+                reason = "R_ISOLATION_FAILED"
+                vault_path = ""
+                error = $_.Exception.Message
+              })
+            }
+          } else {
+            # Lightweight verified record: only store path + size, optionally hash later
+            $verified.Add([ordered]@{
+              path = $fi.FullName
+              size = $fi.Length
+            })
+          }
+        }
+    }
+
+    $report = [ordered]@{
+      clarity = "Clarity Validator"
+      run_id = $runId
+      issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+      mode = $mode
+      target_root = $TargetRoot
+      scan = [ordered]@{
+        full_scan = [bool]$FullScan
+        targets = $targets
+        enumerated_files = $fileCount
+        verified_count = $verified.Count
+        compromised_count = $findings.Count
+        isolated_count = $findings.Count
+        max_findings = $MaxFindings
+      }
+      boot_verification = $bootVerification
+      isolation_vault = [ordered]@{
+        vault_dir = $vaultDir
+        note = "v1 uses copy-to-vault + sidecar metadata"
+      }
+      handoff = [ordered]@{
+        allowed = $true
+        allowed_mode = $(if($findings.Count -gt 0){"restricted"}else{"normal"})
+        note = "v1 userland cannot actually gate boot; this field is canonical for future pre-OS integration"
+      }
+    }
+
+    # Write artifacts
+    Write-Text (Join-Path $artifactDir "report.json") (Json $report)
+
+    # CSV outputs (deterministic headers)
+    $vCsv = Join-Path $artifactDir "files_verified.csv"
+    $cCsv = Join-Path $artifactDir "files_compromised.csv"
+
+    "path,size" | Set-Content -LiteralPath $vCsv -Encoding UTF8
+    foreach ($v in $verified) {
+      Add-Content -LiteralPath $vCsv -Value ('"{0}",{1}' -f ($v.path -replace '"','""'), $v.size) -Encoding UTF8
+    }
+
+    "path,sha256,reason,vault_path" | Set-Content -LiteralPath $cCsv -Encoding UTF8
+    foreach ($f in $findings) {
+      Add-Content -LiteralPath $cCsv -Value ('"{0}","{1}","{2}","{3}"' -f `
+        ($f.path -replace '"','""'), $f.sha256, $f.reason, ($f.vault_path -replace '"','""')) -Encoding UTF8
+    }
+
+    Write-Sha256Sums $artifactDir @("report.json","files_verified.csv","files_compromised.csv")
+
+    # Human summary
+    Write-Host ""
+    Write-Host "CLARITY RESULT" -ForegroundColor Cyan
+    Write-Host ("  VERIFIED:     {0}" -f $verified.Count) -ForegroundColor Green
+    Write-Host ("  COMPROMISED:  {0}" -f $findings.Count) -ForegroundColor Yellow
+    if ($findings.Count -gt 0) {
+      Write-Host ("  ACTION: files copied to Isolation Vault: {0}" -f $vaultDir) -ForegroundColor Yellow
+      Write-Host "  Next: open artifact files_compromised.csv for paths + reasons." -ForegroundColor Yellow
+    }
+    Write-Host ("  ARTIFACT: {0}" -f $artifactDir) -ForegroundColor Gray
+    break
+  }
+
+  default {
+    throw "Unknown command: $Command"
+  }
+}
+

@@ -1,0 +1,51 @@
+﻿param(
+  [Parameter(Mandatory=$false)][ValidateSet("scan","status","disable","enable")] [string]$Command = "scan",
+  [Parameter(Mandatory=$false)][string]$TargetRoot = "C:\",
+  [Parameter(Mandatory=$false)][switch]$FullScan,
+
+  [Parameter(Mandatory=$false)][int]$MaxFindings = 50,
+  [Parameter(Mandatory=$false)][int]$MaxSeconds = 20,
+  [Parameter(Mandatory=$false)][int]$MaxFiles = 5000,
+  [Parameter(Mandatory=$false)][int]$MaxDepth = 5,
+
+  [Parameter(Mandatory=$false)][ValidateSet("CopyOnly","CopyAndBlock")] [string]$QuarantineMode = "CopyOnly",
+  [Parameter(Mandatory=$false)][ValidateSet("Marker","Rename")] [string]$BlockMethod = "Marker",
+
+  [Parameter(Mandatory=$false)][int]$DisableMinutes = 30,
+  [Parameter(Mandatory=$false)][string]$DisableReason = ""
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$entry = Join-Path $repoRoot "scripts\clarity.ps1"
+
+$argsList = @(
+  "-NoProfile",
+  "-ExecutionPolicy", "Bypass",
+  "-File", $entry,
+  "-Command", $Command
+)
+
+if ($Command -eq "scan") {
+  $argsList += @(
+    "-TargetRoot", $TargetRoot,
+    "-MaxFindings", $MaxFindings,
+    "-MaxSeconds", $MaxSeconds,
+    "-MaxFiles", $MaxFiles,
+    "-MaxDepth", $MaxDepth,
+    "-QuarantineMode", $QuarantineMode,
+    "-BlockMethod", $BlockMethod
+  )
+  if ($FullScan) { $argsList += @("-FullScan") }
+}
+
+if ($Command -eq "disable") {
+  $argsList += @("-DisableMinutes", $DisableMinutes)
+  if ($DisableReason -and $DisableReason.Trim() -ne "") { $argsList += @("-DisableReason", $DisableReason) }
+}
+
+Write-Host "CLARITY RUN:" -ForegroundColor Cyan
+Write-Host ("powershell.exe {0}" -f ($argsList -join " ")) -ForegroundColor Gray
+& powershell.exe @argsList

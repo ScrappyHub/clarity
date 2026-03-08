@@ -1,0 +1,1751 @@
+﻿param(
+  [Parameter(Mandatory=$false)][ValidateSet("scan","view","restore","status","disable","enable")] [string]$Command = "scan",
+  [Parameter(Mandatory=$false)][string]$RunRoot = "",
+  [Parameter(Mandatory=$false)][string]$VaultRoot = "",
+  [Parameter(Mandatory=$false)][string]$TargetRoot = "C:\",
+  [Parameter(Mandatory=$false)][switch]$ReadOnly,
+  [Parameter(Mandatory=$false)][switch]$FullScan,
+  [Parameter(Mandatory=$false)][int]$MaxFindings = 0,
+  [Parameter(Mandatory=$false)][int]$DisableMinutes = 30,
+  [Parameter(Mandatory=$false)][string]$DisableReason = "",
+  [Parameter(Mandatory=$false)][ValidateSet("CopyOnly","CopyAndBlock")] [string]$QuarantineMode = "",
+  [Parameter(Mandatory=$false)][ValidateSet("Marker","Rename")] [string]$BlockMethod = ""
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+function Ensure-Dir([string]$p) { if (-not (Test-Path -LiteralPath $p)) { New-Item -ItemType Directory -Force -Path $p | Out-Null } }
+function Json([object]$o) { return ($o | ConvertTo-Json -Depth 10) }
+function Write-Text([string]$path, [string]$content) { Ensure-Dir (Split-Path -Parent $path); Set-Content -LiteralPath $path -Value $content -Encoding UTF8 }
+function Append-Text([string]$path, [string]$line) { Ensure-Dir (Split-Path -Parent $path); Add-Content -LiteralPath $path -Value $line -Encoding UTF8 }
+function Get-Sha256File([string]$path) { return (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant() }
+
+function New-RunId {
+  $ts = (Get-Date).ToUniversalTime().ToString("yyyyMMdd_HHmmssZ")
+  $rnd = ([Guid]::NewGuid().ToString("N").Substring(0,8)).ToUpperInvariant()
+  return "CRUN_${ts}_$rnd"
+}
+
+function Get-DefaultRunRoot { $base = Join-Path $env:ProgramData "Clarity\runs"; Ensure-Dir $base; return $base }
+function Get-DefaultVaultRoot { $base = Join-Path $env:ProgramData "Clarity\vault"; Ensure-Dir $base; return $base }
+
+function Get-DisableStatePath { $base = Join-Path $env:ProgramData "Clarity\state"; Ensure-Dir $base; return (Join-Path $base "disable_state.json") }
+function Get-IsDisabled {
+  $p = Get-DisableStatePath
+  if (-not (Test-Path -LiteralPath $p)) { return $false }
+  $st = Get-Content -Raw -LiteralPath $p | ConvertFrom-Json
+  $now = (Get-Date).ToUniversalTime()
+  $until = [DateTime]::Parse($st.disabled_until_utc)
+  return ($now -lt $until)
+}
+function Clear-DisableState { $p = Get-DisableStatePath; if (Test-Path -LiteralPath $p) { Remove-Item -Force -LiteralPath $p } }
+function Set-DisableState([int]$minutes, [string]$reason, [string]$artifactDir) {
+  $now = (Get-Date).ToUniversalTime()
+  $until = $now.AddMinutes($minutes)
+  $state = [ordered]@{
+    disabled_at_utc = $now.ToString("o")
+    disabled_until_utc = $until.ToString("o")
+    reason = $reason
+    artifact_dir = $artifactDir
+  }
+  Write-Text (Get-DisableStatePath) (Json $state)
+}
+function Require-PhysicalPresence {
+  Write-Host ""
+  Write-Host "CLARITY: PHYSICAL PRESENCE CHECK" -ForegroundColor Cyan
+  Write-Host "Type EXACTLY: I AM HERE" -ForegroundColor Yellow
+  $resp = Read-Host "Confirm"
+  if ($resp -ne "I AM HERE") { throw "Physical presence check failed." }
+}
+
+function Load-Rules {
+  $repoRoot = Split-Path -Parent $PSScriptRoot
+  $rulesPath = Join-Path $repoRoot "clarity_rules.json"
+  if (-not (Test-Path -LiteralPath $rulesPath)) { throw "Missing clarity_rules.json at $rulesPath" }
+  return (Get-Content -Raw -LiteralPath $rulesPath | ConvertFrom-Json)
+}
+
+function Is-UnderPrefix([string]$p, [string[]]$prefixes) {
+  $pl = $p.ToLowerInvariant()
+  foreach ($pref in $prefixes) {
+    $pr = $pref.ToLowerInvariant().TrimEnd("\")
+    if ($pl.StartsWith($pr)) { return $true }
+  }
+  return $false
+}
+
+function Get-FilesBounded([string]$root, [int]$maxFiles, [int]$maxDepth, [DateTime]$deadlineUtc, [string[]]$skipDirNames) {
+  # BFS traversal to cap depth, time, and count. Avoids huge -Recurse hangs.
+  $out = New-Object System.Collections.Generic.List[System.IO.FileInfo]
+  $q = New-Object System.Collections.Generic.Queue[object]
+  $q.Enqueue([ordered]@{ path=$root; depth=0 })
+
+  while ($q.Count -gt 0) {
+    if ([DateTime]::UtcNow -gt $deadlineUtc) { break }
+    if ($out.Count -ge $maxFiles) { break }
+
+    $cur = $q.Dequeue()
+    $p = [string]$cur.path
+    $d = [int]$cur.depth
+
+    # Enumerate files in this dir
+    try {
+      Get-ChildItem -LiteralPath $p -File -Force -ErrorAction Stop | ForEach-Object {
+        if ([DateTime]::UtcNow -gt $deadlineUtc) { return }
+        if ($out.Count -ge $maxFiles) { return }
+        $out.Add(param(
+  [Parameter(Mandatory=$false)][ValidateSet("scan","view","restore","status","disable","enable")] [string]$Command = "scan",
+  [Parameter(Mandatory=$false)][string]$RunRoot = "",
+  [Parameter(Mandatory=$false)][string]$VaultRoot = "",
+  [Parameter(Mandatory=$false)][string]$TargetRoot = "C:\",
+  [Parameter(Mandatory=$false)][switch]$ReadOnly,
+  [Parameter(Mandatory=$false)][switch]$FullScan,
+  [Parameter(Mandatory=$false)][int]$MaxFindings = 0,
+  [Parameter(Mandatory=$false)][int]$DisableMinutes = 30,
+  [Parameter(Mandatory=$false)][string]$DisableReason = "",
+  [Parameter(Mandatory=$false)][ValidateSet("CopyOnly","CopyAndBlock")] [string]$QuarantineMode = "",
+  [Parameter(Mandatory=$false)][ValidateSet("Marker","Rename")] [string]$BlockMethod = ""
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+function Ensure-Dir([string]$p) { if (-not (Test-Path -LiteralPath $p)) { New-Item -ItemType Directory -Force -Path $p | Out-Null } }
+function Json([object]$o) { return ($o | ConvertTo-Json -Depth 10) }
+function Write-Text([string]$path, [string]$content) { Ensure-Dir (Split-Path -Parent $path); Set-Content -LiteralPath $path -Value $content -Encoding UTF8 }
+function Append-Text([string]$path, [string]$line) { Ensure-Dir (Split-Path -Parent $path); Add-Content -LiteralPath $path -Value $line -Encoding UTF8 }
+function Get-Sha256File([string]$path) { return (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant() }
+
+function New-RunId {
+  $ts = (Get-Date).ToUniversalTime().ToString("yyyyMMdd_HHmmssZ")
+  $rnd = ([Guid]::NewGuid().ToString("N").Substring(0,8)).ToUpperInvariant()
+  return "CRUN_${ts}_$rnd"
+}
+
+function Get-DefaultRunRoot { $base = Join-Path $env:ProgramData "Clarity\runs"; Ensure-Dir $base; return $base }
+function Get-DefaultVaultRoot { $base = Join-Path $env:ProgramData "Clarity\vault"; Ensure-Dir $base; return $base }
+
+function Get-DisableStatePath { $base = Join-Path $env:ProgramData "Clarity\state"; Ensure-Dir $base; return (Join-Path $base "disable_state.json") }
+function Get-IsDisabled {
+  $p = Get-DisableStatePath
+  if (-not (Test-Path -LiteralPath $p)) { return $false }
+  $st = Get-Content -Raw -LiteralPath $p | ConvertFrom-Json
+  $now = (Get-Date).ToUniversalTime()
+  $until = [DateTime]::Parse($st.disabled_until_utc)
+  return ($now -lt $until)
+}
+function Clear-DisableState { $p = Get-DisableStatePath; if (Test-Path -LiteralPath $p) { Remove-Item -Force -LiteralPath $p } }
+function Set-DisableState([int]$minutes, [string]$reason, [string]$artifactDir) {
+  $now = (Get-Date).ToUniversalTime()
+  $until = $now.AddMinutes($minutes)
+  $state = [ordered]@{
+    disabled_at_utc = $now.ToString("o")
+    disabled_until_utc = $until.ToString("o")
+    reason = $reason
+    artifact_dir = $artifactDir
+  }
+  Write-Text (Get-DisableStatePath) (Json $state)
+}
+function Require-PhysicalPresence {
+  Write-Host ""
+  Write-Host "CLARITY: PHYSICAL PRESENCE CHECK" -ForegroundColor Cyan
+  Write-Host "Type EXACTLY: I AM HERE" -ForegroundColor Yellow
+  $resp = Read-Host "Confirm"
+  if ($resp -ne "I AM HERE") { throw "Physical presence check failed." }
+}
+
+function Load-Rules {
+  $repoRoot = Split-Path -Parent $PSScriptRoot
+  $rulesPath = Join-Path $repoRoot "clarity_rules.json"
+  if (-not (Test-Path -LiteralPath $rulesPath)) { throw "Missing clarity_rules.json at $rulesPath" }
+  return (Get-Content -Raw -LiteralPath $rulesPath | ConvertFrom-Json)
+}
+
+function Is-UnderPrefix([string]$p, [string[]]$prefixes) {
+  $pl = $p.ToLowerInvariant()
+  foreach ($pref in $prefixes) {
+    $pr = $pref.ToLowerInvariant().TrimEnd("\")
+    if ($pl.StartsWith($pr)) { return $true }
+  }
+  return $false
+}
+
+function Get-TargetsFast([string]$root, $rules) {
+  $targets = New-Object System.Collections.Generic.List[string]
+  foreach ($t in $rules.scan.targets_fast_points) {
+    if (Test-Path -LiteralPath $t) { $targets.Add($t) }
+  }
+  if ($targets.Count -eq 0 -and (Test-Path -LiteralPath $root)) { $targets.Add($root) }
+  return $targets
+}
+
+function Get-SuspicionReason([System.IO.FileInfo]$fi, $rules) {
+  $path = $fi.FullName.ToLowerInvariant()
+  $name = $fi.Name.ToLowerInvariant()
+  $ext = $fi.Extension.ToLowerInvariant()
+
+  $isStartup = ($path -like "*\start menu\programs\startup\*")
+  if ($isStartup -and ($rules.suspicion.startup_bad_extensions -contains $ext)) {
+    return "R_STARTUP_SCRIPT_OR_LINK"
+  }
+
+  $isTempish = ($path -like "*\appdata\local\temp\*") -or ($path -like "*\windows\temp\*")
+  if ($isTempish -and ($rules.suspicion.temp_exec_extensions -contains $ext)) {
+    return "R_TEMP_EXECUTABLE"
+  }
+
+  if ($name -match $rules.suspicion.double_extension_regex) {
+    return "R_DOUBLE_EXTENSION"
+  }
+
+  return $null
+}
+
+function Copy-ToVault([string]$src, [string]$vaultDir, [string]$reason) {
+  Ensure-Dir $vaultDir
+  $sha = Get-Sha256File $src
+  $leaf = Split-Path -Leaf $src
+  $dest = Join-Path $vaultDir ("{0}_{1}" -f $sha.Substring(0,12), $leaf)
+
+  Copy-Item -LiteralPath $src -Destination $dest -Force
+
+  $meta = [ordered]@{
+    original_path = $src
+    vault_path = $dest
+    sha256 = $sha
+    reason = $reason
+    isolated_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+    quarantine_mode = "CopyOnly"
+  }
+  Write-Text ($dest + ".json") (Json $meta)
+
+  return [ordered]@{ sha256=$sha; original=$src; vault=$dest; reason=$reason }
+}
+
+function Block-OriginalMarker([string]$src, [string]$reason, [string]$runId) {
+  # Safe-by-default: does NOT change behavior; creates a deterministic marker for tooling & evidence
+  $marker = $src + ".clarity.blocked.json"
+  $o = [ordered]@{
+    clarity = "Clarity Validator"
+    run_id = $runId
+    action = "BLOCK_MARKER"
+    original_path = $src
+    reason = $reason
+    issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+    note = "Marker only; original file unchanged. Use restore to remove marker."
+  }
+  Write-Text $marker (Json $o)
+  return $marker
+}
+
+function Block-OriginalRename([string]$src, [string]$reason, [string]$runId) {
+  # Rename is only allowed for startup/ temp style targets, never critical paths
+  $dir = Split-Path -Parent $src
+  $leaf = Split-Path -Leaf $src
+  $dest = Join-Path $dir ($leaf + ".clarity_blocked")
+
+  if (Test-Path -LiteralPath $dest) { throw "Rename target already exists: $dest" }
+
+  Rename-Item -LiteralPath $src -NewName (Split-Path -Leaf $dest)
+
+  $rb = $dest + ".rollback.json"
+  $o = [ordered]@{
+    clarity = "Clarity Validator"
+    run_id = $runId
+    action = "BLOCK_RENAME"
+    original_path = $src
+    blocked_path = $dest
+    reason = $reason
+    issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+    restore_hint = "Use -Command restore to revert blocked_path back to original_path."
+  }
+  Write-Text $rb (Json $o)
+  return [ordered]@{ blocked=$dest; rollback=$rb }
+}
+
+function Restore-FromRollback([string]$rollbackPath) {
+  $rb = Get-Content -Raw -LiteralPath $rollbackPath | ConvertFrom-Json
+  if ($rb.action -ne "BLOCK_RENAME") { throw "Not a rename rollback file: $rollbackPath" }
+  $blocked = [string]$rb.blocked_path
+  $orig = [string]$rb.original_path
+  if (-not (Test-Path -LiteralPath $blocked)) { throw "Blocked file missing: $blocked" }
+  if (Test-Path -LiteralPath $orig) { throw "Original path already exists: $orig" }
+
+  Rename-Item -LiteralPath $blocked -NewName (Split-Path -Leaf $orig)
+  Remove-Item -Force -LiteralPath $rollbackPath
+  return [ordered]@{ restored=$orig }
+}
+
+function Write-Sha256Sums([string]$dir, [string[]]$pathsRelToDir) {
+  $out = Join-Path $dir "sha256sums.txt"
+  if (Test-Path -LiteralPath $out) { Remove-Item -Force -LiteralPath $out }
+  foreach ($rel in $pathsRelToDir) {
+    $p = Join-Path $dir $rel
+    if (Test-Path -LiteralPath $p) {
+      $h = Get-Sha256File $p
+      Append-Text $out ("{0}  {1}" -f $h, $rel.Replace("\","/"))
+    }
+  }
+}
+
+# Resolve roots
+if (-not $RunRoot -or $RunRoot.Trim() -eq "") { $RunRoot = Get-DefaultRunRoot }
+if (-not $VaultRoot -or $VaultRoot.Trim() -eq "") { $VaultRoot = Get-DefaultVaultRoot }
+
+$rules = Load-Rules
+
+# Apply rule defaults for max findings / quarantine if not supplied
+if ($MaxFindings -le 0) { $MaxFindings = [int]$rules.scan.max_findings_default }
+if (-not $QuarantineMode -or $QuarantineMode.Trim() -eq "") { $QuarantineMode = [string]$rules.quarantine.default_mode }
+if (-not $BlockMethod -or $BlockMethod.Trim() -eq "") { $BlockMethod = [string]$rules.quarantine.default_block_method }
+
+$runId = New-RunId
+$runDir = Join-Path $RunRoot $runId
+$artifactDir = Join-Path $runDir "artifact"
+$vaultDir = Join-Path $VaultRoot $runId
+Ensure-Dir $artifactDir
+Ensure-Dir $vaultDir
+
+switch ($Command) {
+  "status" {
+    $disabled = Get-IsDisabled
+    Write-Host ("CLARITY status: {0}" -f ($(if($disabled){"DISABLED"}else{"ENABLED"}))) -ForegroundColor Cyan
+    if ($disabled) {
+      $st = Get-Content -Raw -LiteralPath (Get-DisableStatePath) | ConvertFrom-Json
+      Write-Host ("Disabled until (UTC): {0}" -f $st.disabled_until_utc)
+      Write-Host ("Reason: {0}" -f $st.reason)
+      Write-Host ("Artifact: {0}" -f $st.artifact_dir)
+    }
+    break
+  }
+
+  "disable" {
+    Require-PhysicalPresence
+    if (-not $DisableReason -or $DisableReason.Trim() -eq "") { $DisableReason = "user_requested" }
+
+    $disable = [ordered]@{
+      clarity = "Clarity Validator"
+      action = "DISABLE"
+      disabled_minutes = $DisableMinutes
+      reason = $DisableReason
+      issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+      reenable_at_utc = (Get-Date).ToUniversalTime().AddMinutes($DisableMinutes).ToString("o")
+      mode = "windows_userland_v1_1"
+    }
+    Write-Text (Join-Path $artifactDir "disable.json") (Json $disable)
+    Write-Sha256Sums $artifactDir @("disable.json")
+
+    Set-DisableState -minutes $DisableMinutes -reason $DisableReason -artifactDir $artifactDir
+    Write-Host "CLARITY: disabled (time-bounded). Auto re-enables after window." -ForegroundColor Yellow
+    Write-Host ("Disable artifact: {0}" -f $artifactDir)
+    break
+  }
+
+  "enable" {
+    Require-PhysicalPresence
+    Clear-DisableState
+    $enable = [ordered]@{
+      clarity = "Clarity Validator"
+      action = "ENABLE"
+      issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+      mode = "windows_userland_v1_1"
+    }
+    Write-Text (Join-Path $artifactDir "enable.json") (Json $enable)
+    Write-Sha256Sums $artifactDir @("enable.json")
+    Write-Host "CLARITY: enabled." -ForegroundColor Green
+    Write-Host ("Enable artifact: {0}" -f $artifactDir)
+    break
+  }
+
+  "restore" {
+    Require-PhysicalPresence
+    Write-Host "CLARITY restore:" -ForegroundColor Cyan
+    Write-Host "Paste full path to a *.rollback.json file (created by Rename blocking)" -ForegroundColor Yellow
+    $rb = Read-Host "Rollback file"
+    $res = Restore-FromRollback -rollbackPath $rb
+    Write-Host ("Restored: {0}" -f $res.restored) -ForegroundColor Green
+    break
+  }
+
+  "scan" {
+    if (Get-IsDisabled) {
+      Write-Host "CLARITY: validator is currently DISABLED (time-bounded). Exiting scan." -ForegroundColor Yellow
+      exit 2
+    }
+
+    $mode = "windows_userland_v1_1"
+    $bootVerification = [ordered]@{
+      status = "degraded"
+      reason = "BOOT_CHAIN_NOT_AVAILABLE_IN_USERLAND"
+    }
+
+    $targets = if ($FullScan) { @($TargetRoot) } else { (Get-TargetsFast -root $TargetRoot -rules $rules) }
+
+    $verified = New-Object System.Collections.Generic.List[object]
+    $findings = New-Object System.Collections.Generic.List[object]
+
+    $fileCount = 0
+    foreach ($t in $targets) {
+      Get-ChildItem -LiteralPath $t -File -Recurse -Force -ErrorAction SilentlyContinue |
+        ForEach-Object {
+          if ($findings.Count -ge $MaxFindings) { return }
+          $fi = $_
+          $fileCount++
+
+          $reason = Get-SuspicionReason -fi $fi -rules $rules
+          if ($null -ne $reason) {
+            # Always copy-to-vault (safe)
+            $rec = $null
+            try { $rec = Copy-ToVault -src $fi.FullName -vaultDir $vaultDir -reason $reason } catch {
+              $findings.Add([ordered]@{ path=$fi.FullName; sha256=""; reason="R_VAULT_COPY_FAILED"; vault_path=""; block_action="none"; block_detail=$_.Exception.Message })
+              return
+            }
+
+            # Default safe: do NOT modify original.
+            $blockAction = "none"
+            $blockDetail = ""
+
+            if ($QuarantineMode -eq "CopyAndBlock") {
+              $p = $fi.FullName
+              $isCritical = Is-UnderPrefix -p $p -prefixes $rules.scan.critical_prefixes
+              $isAllowedRoot = Is-UnderPrefix -p $p -prefixes $rules.quarantine.allowed_block_roots
+
+              if ($isCritical) {
+                $blockAction = "refused"
+                $blockDetail = "REFUSED_CRITICAL_PATH"
+              } elseif (-not $isAllowedRoot) {
+                $blockAction = "refused"
+                $blockDetail = "REFUSED_OUTSIDE_ALLOWED_BLOCK_ROOTS"
+              } else {
+                if ($BlockMethod -eq "Marker") {
+                  $m = Block-OriginalMarker -src $p -reason $reason -runId $runId
+                  $blockAction = "marker"
+                  $blockDetail = $m
+                } elseif ($BlockMethod -eq "Rename") {
+                  # Rename allowed ONLY for Startup (very conservative)
+                  $pl = $p.ToLowerInvariant()
+                  if ($pl -like "*\start menu\programs\startup\*") {
+                    $rb = Block-OriginalRename -src $p -reason $reason -runId $runId
+                    $blockAction = "rename"
+                    $blockDetail = $rb.rollback
+                  } else {
+                    $blockAction = "refused"
+                    $blockDetail = "REFUSED_RENAME_NOT_STARTUP"
+                  }
+                }
+              }
+            }
+
+            $findings.Add([ordered]@{
+              path = $rec.original
+              sha256 = $rec.sha256
+              reason = $rec.reason
+              vault_path = $rec.vault
+              quarantine_mode = $QuarantineMode
+              block_method = $BlockMethod
+              block_action = $blockAction
+              block_detail = $blockDetail
+            })
+          } else {
+            $verified.Add([ordered]@{ path=$fi.FullName; size=$fi.Length })
+          }
+        }
+    }
+
+    $report = [ordered]@{
+      clarity = "Clarity Validator"
+      run_id = $runId
+      issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+      mode = $mode
+      target_root = $TargetRoot
+      policy = [ordered]@{
+        quarantine_mode = $QuarantineMode
+        block_method = $BlockMethod
+        safe_by_default = $true
+        note = "Default is CopyOnly (no original modification). Blocking is optional and refused on critical paths."
+      }
+      scan = [ordered]@{
+        full_scan = [bool]$FullScan
+        targets = $targets
+        enumerated_files = $fileCount
+        verified_count = $verified.Count
+        compromised_count = $findings.Count
+        isolated_count = $findings.Count
+        max_findings = $MaxFindings
+      }
+      boot_verification = $bootVerification
+      isolation_vault = [ordered]@{
+        vault_dir = $vaultDir
+        mode = "copy_to_vault"
+      }
+      handoff = [ordered]@{
+        allowed = $true
+        allowed_mode = $(if($findings.Count -gt 0){"restricted"}else{"normal"})
+        note = "v1.1 userland cannot gate boot; canonical contract retained for pre-OS integration"
+      }
+    }
+
+    Write-Text (Join-Path $artifactDir "report.json") (Json $report)
+
+    $vCsv = Join-Path $artifactDir "files_verified.csv"
+    $cCsv = Join-Path $artifactDir "files_compromised.csv"
+
+    "path,size" | Set-Content -LiteralPath $vCsv -Encoding UTF8
+    foreach ($v in $verified) {
+      Add-Content -LiteralPath $vCsv -Value ('"{0}",{1}' -f ($v.path -replace '"','""'), $v.size) -Encoding UTF8
+    }
+
+    "path,sha256,reason,vault_path,quarantine_mode,block_method,block_action,block_detail" | Set-Content -LiteralPath $cCsv -Encoding UTF8
+    foreach ($f in $findings) {
+      Add-Content -LiteralPath $cCsv -Value ('"{0}","{1}","{2}","{3}","{4}","{5}","{6}","{7}"' -f `
+        ($f.path -replace '"','""'), $f.sha256, $f.reason, ($f.vault_path -replace '"','""'), $f.quarantine_mode, $f.block_method, $f.block_action, ($f.block_detail -replace '"','""')) -Encoding UTF8
+    }
+
+    Write-Sha256Sums $artifactDir @("report.json","files_verified.csv","files_compromised.csv")
+
+    Write-Host ""
+    Write-Host "CLARITY RESULT" -ForegroundColor Cyan
+    Write-Host ("  VERIFIED:     {0}" -f $verified.Count) -ForegroundColor Green
+    Write-Host ("  COMPROMISED:  {0}" -f $findings.Count) -ForegroundColor Yellow
+    Write-Host ("  QUARANTINE:   {0} (safe-by-default)" -f $QuarantineMode) -ForegroundColor Gray
+    if ($findings.Count -gt 0) {
+      Write-Host ("  ISOLATION VAULT: {0}" -f $vaultDir) -ForegroundColor Yellow
+      Write-Host ("  ARTIFACT: {0}" -f $artifactDir) -ForegroundColor Gray
+      Write-Host "  Next: open files_compromised.csv for paths + reasons + block_action." -ForegroundColor Yellow
+    } else {
+      Write-Host ("  ARTIFACT: {0}" -f $artifactDir) -ForegroundColor Gray
+    }
+    break
+  }
+
+  default { throw "Unknown command: $Command" }
+}
+)
+      }
+    } catch {
+      # ignore unreadable dirs
+    }
+
+    if ($d -ge $maxDepth) { continue }
+
+    # Enqueue subdirs (skip heavy names)
+    try {
+      Get-ChildItem -LiteralPath $p -Directory -Force -ErrorAction Stop | ForEach-Object {
+        if ([DateTime]::UtcNow -gt $deadlineUtc) { return }
+        $name = param(
+  [Parameter(Mandatory=$false)][ValidateSet("scan","view","restore","status","disable","enable")] [string]$Command = "scan",
+  [Parameter(Mandatory=$false)][string]$RunRoot = "",
+  [Parameter(Mandatory=$false)][string]$VaultRoot = "",
+  [Parameter(Mandatory=$false)][string]$TargetRoot = "C:\",
+  [Parameter(Mandatory=$false)][switch]$ReadOnly,
+  [Parameter(Mandatory=$false)][switch]$FullScan,
+  [Parameter(Mandatory=$false)][int]$MaxFindings = 0,
+  [Parameter(Mandatory=$false)][int]$DisableMinutes = 30,
+  [Parameter(Mandatory=$false)][string]$DisableReason = "",
+  [Parameter(Mandatory=$false)][ValidateSet("CopyOnly","CopyAndBlock")] [string]$QuarantineMode = "",
+  [Parameter(Mandatory=$false)][ValidateSet("Marker","Rename")] [string]$BlockMethod = ""
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+function Ensure-Dir([string]$p) { if (-not (Test-Path -LiteralPath $p)) { New-Item -ItemType Directory -Force -Path $p | Out-Null } }
+function Json([object]$o) { return ($o | ConvertTo-Json -Depth 10) }
+function Write-Text([string]$path, [string]$content) { Ensure-Dir (Split-Path -Parent $path); Set-Content -LiteralPath $path -Value $content -Encoding UTF8 }
+function Append-Text([string]$path, [string]$line) { Ensure-Dir (Split-Path -Parent $path); Add-Content -LiteralPath $path -Value $line -Encoding UTF8 }
+function Get-Sha256File([string]$path) { return (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant() }
+
+function New-RunId {
+  $ts = (Get-Date).ToUniversalTime().ToString("yyyyMMdd_HHmmssZ")
+  $rnd = ([Guid]::NewGuid().ToString("N").Substring(0,8)).ToUpperInvariant()
+  return "CRUN_${ts}_$rnd"
+}
+
+function Get-DefaultRunRoot { $base = Join-Path $env:ProgramData "Clarity\runs"; Ensure-Dir $base; return $base }
+function Get-DefaultVaultRoot { $base = Join-Path $env:ProgramData "Clarity\vault"; Ensure-Dir $base; return $base }
+
+function Get-DisableStatePath { $base = Join-Path $env:ProgramData "Clarity\state"; Ensure-Dir $base; return (Join-Path $base "disable_state.json") }
+function Get-IsDisabled {
+  $p = Get-DisableStatePath
+  if (-not (Test-Path -LiteralPath $p)) { return $false }
+  $st = Get-Content -Raw -LiteralPath $p | ConvertFrom-Json
+  $now = (Get-Date).ToUniversalTime()
+  $until = [DateTime]::Parse($st.disabled_until_utc)
+  return ($now -lt $until)
+}
+function Clear-DisableState { $p = Get-DisableStatePath; if (Test-Path -LiteralPath $p) { Remove-Item -Force -LiteralPath $p } }
+function Set-DisableState([int]$minutes, [string]$reason, [string]$artifactDir) {
+  $now = (Get-Date).ToUniversalTime()
+  $until = $now.AddMinutes($minutes)
+  $state = [ordered]@{
+    disabled_at_utc = $now.ToString("o")
+    disabled_until_utc = $until.ToString("o")
+    reason = $reason
+    artifact_dir = $artifactDir
+  }
+  Write-Text (Get-DisableStatePath) (Json $state)
+}
+function Require-PhysicalPresence {
+  Write-Host ""
+  Write-Host "CLARITY: PHYSICAL PRESENCE CHECK" -ForegroundColor Cyan
+  Write-Host "Type EXACTLY: I AM HERE" -ForegroundColor Yellow
+  $resp = Read-Host "Confirm"
+  if ($resp -ne "I AM HERE") { throw "Physical presence check failed." }
+}
+
+function Load-Rules {
+  $repoRoot = Split-Path -Parent $PSScriptRoot
+  $rulesPath = Join-Path $repoRoot "clarity_rules.json"
+  if (-not (Test-Path -LiteralPath $rulesPath)) { throw "Missing clarity_rules.json at $rulesPath" }
+  return (Get-Content -Raw -LiteralPath $rulesPath | ConvertFrom-Json)
+}
+
+function Is-UnderPrefix([string]$p, [string[]]$prefixes) {
+  $pl = $p.ToLowerInvariant()
+  foreach ($pref in $prefixes) {
+    $pr = $pref.ToLowerInvariant().TrimEnd("\")
+    if ($pl.StartsWith($pr)) { return $true }
+  }
+  return $false
+}
+
+function Get-TargetsFast([string]$root, $rules) {
+  $targets = New-Object System.Collections.Generic.List[string]
+  foreach ($t in $rules.scan.targets_fast_points) {
+    if (Test-Path -LiteralPath $t) { $targets.Add($t) }
+  }
+  if ($targets.Count -eq 0 -and (Test-Path -LiteralPath $root)) { $targets.Add($root) }
+  return $targets
+}
+
+function Get-SuspicionReason([System.IO.FileInfo]$fi, $rules) {
+  $path = $fi.FullName.ToLowerInvariant()
+  $name = $fi.Name.ToLowerInvariant()
+  $ext = $fi.Extension.ToLowerInvariant()
+
+  $isStartup = ($path -like "*\start menu\programs\startup\*")
+  if ($isStartup -and ($rules.suspicion.startup_bad_extensions -contains $ext)) {
+    return "R_STARTUP_SCRIPT_OR_LINK"
+  }
+
+  $isTempish = ($path -like "*\appdata\local\temp\*") -or ($path -like "*\windows\temp\*")
+  if ($isTempish -and ($rules.suspicion.temp_exec_extensions -contains $ext)) {
+    return "R_TEMP_EXECUTABLE"
+  }
+
+  if ($name -match $rules.suspicion.double_extension_regex) {
+    return "R_DOUBLE_EXTENSION"
+  }
+
+  return $null
+}
+
+function Copy-ToVault([string]$src, [string]$vaultDir, [string]$reason) {
+  Ensure-Dir $vaultDir
+  $sha = Get-Sha256File $src
+  $leaf = Split-Path -Leaf $src
+  $dest = Join-Path $vaultDir ("{0}_{1}" -f $sha.Substring(0,12), $leaf)
+
+  Copy-Item -LiteralPath $src -Destination $dest -Force
+
+  $meta = [ordered]@{
+    original_path = $src
+    vault_path = $dest
+    sha256 = $sha
+    reason = $reason
+    isolated_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+    quarantine_mode = "CopyOnly"
+  }
+  Write-Text ($dest + ".json") (Json $meta)
+
+  return [ordered]@{ sha256=$sha; original=$src; vault=$dest; reason=$reason }
+}
+
+function Block-OriginalMarker([string]$src, [string]$reason, [string]$runId) {
+  # Safe-by-default: does NOT change behavior; creates a deterministic marker for tooling & evidence
+  $marker = $src + ".clarity.blocked.json"
+  $o = [ordered]@{
+    clarity = "Clarity Validator"
+    run_id = $runId
+    action = "BLOCK_MARKER"
+    original_path = $src
+    reason = $reason
+    issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+    note = "Marker only; original file unchanged. Use restore to remove marker."
+  }
+  Write-Text $marker (Json $o)
+  return $marker
+}
+
+function Block-OriginalRename([string]$src, [string]$reason, [string]$runId) {
+  # Rename is only allowed for startup/ temp style targets, never critical paths
+  $dir = Split-Path -Parent $src
+  $leaf = Split-Path -Leaf $src
+  $dest = Join-Path $dir ($leaf + ".clarity_blocked")
+
+  if (Test-Path -LiteralPath $dest) { throw "Rename target already exists: $dest" }
+
+  Rename-Item -LiteralPath $src -NewName (Split-Path -Leaf $dest)
+
+  $rb = $dest + ".rollback.json"
+  $o = [ordered]@{
+    clarity = "Clarity Validator"
+    run_id = $runId
+    action = "BLOCK_RENAME"
+    original_path = $src
+    blocked_path = $dest
+    reason = $reason
+    issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+    restore_hint = "Use -Command restore to revert blocked_path back to original_path."
+  }
+  Write-Text $rb (Json $o)
+  return [ordered]@{ blocked=$dest; rollback=$rb }
+}
+
+function Restore-FromRollback([string]$rollbackPath) {
+  $rb = Get-Content -Raw -LiteralPath $rollbackPath | ConvertFrom-Json
+  if ($rb.action -ne "BLOCK_RENAME") { throw "Not a rename rollback file: $rollbackPath" }
+  $blocked = [string]$rb.blocked_path
+  $orig = [string]$rb.original_path
+  if (-not (Test-Path -LiteralPath $blocked)) { throw "Blocked file missing: $blocked" }
+  if (Test-Path -LiteralPath $orig) { throw "Original path already exists: $orig" }
+
+  Rename-Item -LiteralPath $blocked -NewName (Split-Path -Leaf $orig)
+  Remove-Item -Force -LiteralPath $rollbackPath
+  return [ordered]@{ restored=$orig }
+}
+
+function Write-Sha256Sums([string]$dir, [string[]]$pathsRelToDir) {
+  $out = Join-Path $dir "sha256sums.txt"
+  if (Test-Path -LiteralPath $out) { Remove-Item -Force -LiteralPath $out }
+  foreach ($rel in $pathsRelToDir) {
+    $p = Join-Path $dir $rel
+    if (Test-Path -LiteralPath $p) {
+      $h = Get-Sha256File $p
+      Append-Text $out ("{0}  {1}" -f $h, $rel.Replace("\","/"))
+    }
+  }
+}
+
+# Resolve roots
+if (-not $RunRoot -or $RunRoot.Trim() -eq "") { $RunRoot = Get-DefaultRunRoot }
+if (-not $VaultRoot -or $VaultRoot.Trim() -eq "") { $VaultRoot = Get-DefaultVaultRoot }
+
+$rules = Load-Rules
+
+# Apply rule defaults for max findings / quarantine if not supplied
+if ($MaxFindings -le 0) { $MaxFindings = [int]$rules.scan.max_findings_default }
+if (-not $QuarantineMode -or $QuarantineMode.Trim() -eq "") { $QuarantineMode = [string]$rules.quarantine.default_mode }
+if (-not $BlockMethod -or $BlockMethod.Trim() -eq "") { $BlockMethod = [string]$rules.quarantine.default_block_method }
+
+$runId = New-RunId
+$runDir = Join-Path $RunRoot $runId
+$artifactDir = Join-Path $runDir "artifact"
+$vaultDir = Join-Path $VaultRoot $runId
+Ensure-Dir $artifactDir
+Ensure-Dir $vaultDir
+
+switch ($Command) {
+  "status" {
+    $disabled = Get-IsDisabled
+    Write-Host ("CLARITY status: {0}" -f ($(if($disabled){"DISABLED"}else{"ENABLED"}))) -ForegroundColor Cyan
+    if ($disabled) {
+      $st = Get-Content -Raw -LiteralPath (Get-DisableStatePath) | ConvertFrom-Json
+      Write-Host ("Disabled until (UTC): {0}" -f $st.disabled_until_utc)
+      Write-Host ("Reason: {0}" -f $st.reason)
+      Write-Host ("Artifact: {0}" -f $st.artifact_dir)
+    }
+    break
+  }
+
+  "disable" {
+    Require-PhysicalPresence
+    if (-not $DisableReason -or $DisableReason.Trim() -eq "") { $DisableReason = "user_requested" }
+
+    $disable = [ordered]@{
+      clarity = "Clarity Validator"
+      action = "DISABLE"
+      disabled_minutes = $DisableMinutes
+      reason = $DisableReason
+      issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+      reenable_at_utc = (Get-Date).ToUniversalTime().AddMinutes($DisableMinutes).ToString("o")
+      mode = "windows_userland_v1_1"
+    }
+    Write-Text (Join-Path $artifactDir "disable.json") (Json $disable)
+    Write-Sha256Sums $artifactDir @("disable.json")
+
+    Set-DisableState -minutes $DisableMinutes -reason $DisableReason -artifactDir $artifactDir
+    Write-Host "CLARITY: disabled (time-bounded). Auto re-enables after window." -ForegroundColor Yellow
+    Write-Host ("Disable artifact: {0}" -f $artifactDir)
+    break
+  }
+
+  "enable" {
+    Require-PhysicalPresence
+    Clear-DisableState
+    $enable = [ordered]@{
+      clarity = "Clarity Validator"
+      action = "ENABLE"
+      issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+      mode = "windows_userland_v1_1"
+    }
+    Write-Text (Join-Path $artifactDir "enable.json") (Json $enable)
+    Write-Sha256Sums $artifactDir @("enable.json")
+    Write-Host "CLARITY: enabled." -ForegroundColor Green
+    Write-Host ("Enable artifact: {0}" -f $artifactDir)
+    break
+  }
+
+  "restore" {
+    Require-PhysicalPresence
+    Write-Host "CLARITY restore:" -ForegroundColor Cyan
+    Write-Host "Paste full path to a *.rollback.json file (created by Rename blocking)" -ForegroundColor Yellow
+    $rb = Read-Host "Rollback file"
+    $res = Restore-FromRollback -rollbackPath $rb
+    Write-Host ("Restored: {0}" -f $res.restored) -ForegroundColor Green
+    break
+  }
+
+  "scan" {
+    if (Get-IsDisabled) {
+      Write-Host "CLARITY: validator is currently DISABLED (time-bounded). Exiting scan." -ForegroundColor Yellow
+      exit 2
+    }
+
+    $mode = "windows_userland_v1_1"
+    $bootVerification = [ordered]@{
+      status = "degraded"
+      reason = "BOOT_CHAIN_NOT_AVAILABLE_IN_USERLAND"
+    }
+
+    $targets = if ($FullScan) { @($TargetRoot) } else { (Get-TargetsFast -root $TargetRoot -rules $rules) }
+
+    $verified = New-Object System.Collections.Generic.List[object]
+    $findings = New-Object System.Collections.Generic.List[object]
+
+    $fileCount = 0
+    foreach ($t in $targets) {
+      Get-ChildItem -LiteralPath $t -File -Recurse -Force -ErrorAction SilentlyContinue |
+        ForEach-Object {
+          if ($findings.Count -ge $MaxFindings) { return }
+          $fi = $_
+          $fileCount++
+
+          $reason = Get-SuspicionReason -fi $fi -rules $rules
+          if ($null -ne $reason) {
+            # Always copy-to-vault (safe)
+            $rec = $null
+            try { $rec = Copy-ToVault -src $fi.FullName -vaultDir $vaultDir -reason $reason } catch {
+              $findings.Add([ordered]@{ path=$fi.FullName; sha256=""; reason="R_VAULT_COPY_FAILED"; vault_path=""; block_action="none"; block_detail=$_.Exception.Message })
+              return
+            }
+
+            # Default safe: do NOT modify original.
+            $blockAction = "none"
+            $blockDetail = ""
+
+            if ($QuarantineMode -eq "CopyAndBlock") {
+              $p = $fi.FullName
+              $isCritical = Is-UnderPrefix -p $p -prefixes $rules.scan.critical_prefixes
+              $isAllowedRoot = Is-UnderPrefix -p $p -prefixes $rules.quarantine.allowed_block_roots
+
+              if ($isCritical) {
+                $blockAction = "refused"
+                $blockDetail = "REFUSED_CRITICAL_PATH"
+              } elseif (-not $isAllowedRoot) {
+                $blockAction = "refused"
+                $blockDetail = "REFUSED_OUTSIDE_ALLOWED_BLOCK_ROOTS"
+              } else {
+                if ($BlockMethod -eq "Marker") {
+                  $m = Block-OriginalMarker -src $p -reason $reason -runId $runId
+                  $blockAction = "marker"
+                  $blockDetail = $m
+                } elseif ($BlockMethod -eq "Rename") {
+                  # Rename allowed ONLY for Startup (very conservative)
+                  $pl = $p.ToLowerInvariant()
+                  if ($pl -like "*\start menu\programs\startup\*") {
+                    $rb = Block-OriginalRename -src $p -reason $reason -runId $runId
+                    $blockAction = "rename"
+                    $blockDetail = $rb.rollback
+                  } else {
+                    $blockAction = "refused"
+                    $blockDetail = "REFUSED_RENAME_NOT_STARTUP"
+                  }
+                }
+              }
+            }
+
+            $findings.Add([ordered]@{
+              path = $rec.original
+              sha256 = $rec.sha256
+              reason = $rec.reason
+              vault_path = $rec.vault
+              quarantine_mode = $QuarantineMode
+              block_method = $BlockMethod
+              block_action = $blockAction
+              block_detail = $blockDetail
+            })
+          } else {
+            $verified.Add([ordered]@{ path=$fi.FullName; size=$fi.Length })
+          }
+        }
+    }
+
+    $report = [ordered]@{
+      clarity = "Clarity Validator"
+      run_id = $runId
+      issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+      mode = $mode
+      target_root = $TargetRoot
+      policy = [ordered]@{
+        quarantine_mode = $QuarantineMode
+        block_method = $BlockMethod
+        safe_by_default = $true
+        note = "Default is CopyOnly (no original modification). Blocking is optional and refused on critical paths."
+      }
+      scan = [ordered]@{
+        full_scan = [bool]$FullScan
+        targets = $targets
+        enumerated_files = $fileCount
+        verified_count = $verified.Count
+        compromised_count = $findings.Count
+        isolated_count = $findings.Count
+        max_findings = $MaxFindings
+      }
+      boot_verification = $bootVerification
+      isolation_vault = [ordered]@{
+        vault_dir = $vaultDir
+        mode = "copy_to_vault"
+      }
+      handoff = [ordered]@{
+        allowed = $true
+        allowed_mode = $(if($findings.Count -gt 0){"restricted"}else{"normal"})
+        note = "v1.1 userland cannot gate boot; canonical contract retained for pre-OS integration"
+      }
+    }
+
+    Write-Text (Join-Path $artifactDir "report.json") (Json $report)
+
+    $vCsv = Join-Path $artifactDir "files_verified.csv"
+    $cCsv = Join-Path $artifactDir "files_compromised.csv"
+
+    "path,size" | Set-Content -LiteralPath $vCsv -Encoding UTF8
+    foreach ($v in $verified) {
+      Add-Content -LiteralPath $vCsv -Value ('"{0}",{1}' -f ($v.path -replace '"','""'), $v.size) -Encoding UTF8
+    }
+
+    "path,sha256,reason,vault_path,quarantine_mode,block_method,block_action,block_detail" | Set-Content -LiteralPath $cCsv -Encoding UTF8
+    foreach ($f in $findings) {
+      Add-Content -LiteralPath $cCsv -Value ('"{0}","{1}","{2}","{3}","{4}","{5}","{6}","{7}"' -f `
+        ($f.path -replace '"','""'), $f.sha256, $f.reason, ($f.vault_path -replace '"','""'), $f.quarantine_mode, $f.block_method, $f.block_action, ($f.block_detail -replace '"','""')) -Encoding UTF8
+    }
+
+    Write-Sha256Sums $artifactDir @("report.json","files_verified.csv","files_compromised.csv")
+
+    Write-Host ""
+    Write-Host "CLARITY RESULT" -ForegroundColor Cyan
+    Write-Host ("  VERIFIED:     {0}" -f $verified.Count) -ForegroundColor Green
+    Write-Host ("  COMPROMISED:  {0}" -f $findings.Count) -ForegroundColor Yellow
+    Write-Host ("  QUARANTINE:   {0} (safe-by-default)" -f $QuarantineMode) -ForegroundColor Gray
+    if ($findings.Count -gt 0) {
+      Write-Host ("  ISOLATION VAULT: {0}" -f $vaultDir) -ForegroundColor Yellow
+      Write-Host ("  ARTIFACT: {0}" -f $artifactDir) -ForegroundColor Gray
+      Write-Host "  Next: open files_compromised.csv for paths + reasons + block_action." -ForegroundColor Yellow
+    } else {
+      Write-Host ("  ARTIFACT: {0}" -f $artifactDir) -ForegroundColor Gray
+    }
+    break
+  }
+
+  default { throw "Unknown command: $Command" }
+}
+.Name
+        if ($skipDirNames -contains $name) { return }
+        $q.Enqueue([ordered]@{ path=param(
+  [Parameter(Mandatory=$false)][ValidateSet("scan","view","restore","status","disable","enable")] [string]$Command = "scan",
+  [Parameter(Mandatory=$false)][string]$RunRoot = "",
+  [Parameter(Mandatory=$false)][string]$VaultRoot = "",
+  [Parameter(Mandatory=$false)][string]$TargetRoot = "C:\",
+  [Parameter(Mandatory=$false)][switch]$ReadOnly,
+  [Parameter(Mandatory=$false)][switch]$FullScan,
+  [Parameter(Mandatory=$false)][int]$MaxFindings = 0,
+  [Parameter(Mandatory=$false)][int]$DisableMinutes = 30,
+  [Parameter(Mandatory=$false)][string]$DisableReason = "",
+  [Parameter(Mandatory=$false)][ValidateSet("CopyOnly","CopyAndBlock")] [string]$QuarantineMode = "",
+  [Parameter(Mandatory=$false)][ValidateSet("Marker","Rename")] [string]$BlockMethod = ""
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+function Ensure-Dir([string]$p) { if (-not (Test-Path -LiteralPath $p)) { New-Item -ItemType Directory -Force -Path $p | Out-Null } }
+function Json([object]$o) { return ($o | ConvertTo-Json -Depth 10) }
+function Write-Text([string]$path, [string]$content) { Ensure-Dir (Split-Path -Parent $path); Set-Content -LiteralPath $path -Value $content -Encoding UTF8 }
+function Append-Text([string]$path, [string]$line) { Ensure-Dir (Split-Path -Parent $path); Add-Content -LiteralPath $path -Value $line -Encoding UTF8 }
+function Get-Sha256File([string]$path) { return (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant() }
+
+function New-RunId {
+  $ts = (Get-Date).ToUniversalTime().ToString("yyyyMMdd_HHmmssZ")
+  $rnd = ([Guid]::NewGuid().ToString("N").Substring(0,8)).ToUpperInvariant()
+  return "CRUN_${ts}_$rnd"
+}
+
+function Get-DefaultRunRoot { $base = Join-Path $env:ProgramData "Clarity\runs"; Ensure-Dir $base; return $base }
+function Get-DefaultVaultRoot { $base = Join-Path $env:ProgramData "Clarity\vault"; Ensure-Dir $base; return $base }
+
+function Get-DisableStatePath { $base = Join-Path $env:ProgramData "Clarity\state"; Ensure-Dir $base; return (Join-Path $base "disable_state.json") }
+function Get-IsDisabled {
+  $p = Get-DisableStatePath
+  if (-not (Test-Path -LiteralPath $p)) { return $false }
+  $st = Get-Content -Raw -LiteralPath $p | ConvertFrom-Json
+  $now = (Get-Date).ToUniversalTime()
+  $until = [DateTime]::Parse($st.disabled_until_utc)
+  return ($now -lt $until)
+}
+function Clear-DisableState { $p = Get-DisableStatePath; if (Test-Path -LiteralPath $p) { Remove-Item -Force -LiteralPath $p } }
+function Set-DisableState([int]$minutes, [string]$reason, [string]$artifactDir) {
+  $now = (Get-Date).ToUniversalTime()
+  $until = $now.AddMinutes($minutes)
+  $state = [ordered]@{
+    disabled_at_utc = $now.ToString("o")
+    disabled_until_utc = $until.ToString("o")
+    reason = $reason
+    artifact_dir = $artifactDir
+  }
+  Write-Text (Get-DisableStatePath) (Json $state)
+}
+function Require-PhysicalPresence {
+  Write-Host ""
+  Write-Host "CLARITY: PHYSICAL PRESENCE CHECK" -ForegroundColor Cyan
+  Write-Host "Type EXACTLY: I AM HERE" -ForegroundColor Yellow
+  $resp = Read-Host "Confirm"
+  if ($resp -ne "I AM HERE") { throw "Physical presence check failed." }
+}
+
+function Load-Rules {
+  $repoRoot = Split-Path -Parent $PSScriptRoot
+  $rulesPath = Join-Path $repoRoot "clarity_rules.json"
+  if (-not (Test-Path -LiteralPath $rulesPath)) { throw "Missing clarity_rules.json at $rulesPath" }
+  return (Get-Content -Raw -LiteralPath $rulesPath | ConvertFrom-Json)
+}
+
+function Is-UnderPrefix([string]$p, [string[]]$prefixes) {
+  $pl = $p.ToLowerInvariant()
+  foreach ($pref in $prefixes) {
+    $pr = $pref.ToLowerInvariant().TrimEnd("\")
+    if ($pl.StartsWith($pr)) { return $true }
+  }
+  return $false
+}
+
+function Get-TargetsFast([string]$root, $rules) {
+  $targets = New-Object System.Collections.Generic.List[string]
+  foreach ($t in $rules.scan.targets_fast_points) {
+    if (Test-Path -LiteralPath $t) { $targets.Add($t) }
+  }
+  if ($targets.Count -eq 0 -and (Test-Path -LiteralPath $root)) { $targets.Add($root) }
+  return $targets
+}
+
+function Get-SuspicionReason([System.IO.FileInfo]$fi, $rules) {
+  $path = $fi.FullName.ToLowerInvariant()
+  $name = $fi.Name.ToLowerInvariant()
+  $ext = $fi.Extension.ToLowerInvariant()
+
+  $isStartup = ($path -like "*\start menu\programs\startup\*")
+  if ($isStartup -and ($rules.suspicion.startup_bad_extensions -contains $ext)) {
+    return "R_STARTUP_SCRIPT_OR_LINK"
+  }
+
+  $isTempish = ($path -like "*\appdata\local\temp\*") -or ($path -like "*\windows\temp\*")
+  if ($isTempish -and ($rules.suspicion.temp_exec_extensions -contains $ext)) {
+    return "R_TEMP_EXECUTABLE"
+  }
+
+  if ($name -match $rules.suspicion.double_extension_regex) {
+    return "R_DOUBLE_EXTENSION"
+  }
+
+  return $null
+}
+
+function Copy-ToVault([string]$src, [string]$vaultDir, [string]$reason) {
+  Ensure-Dir $vaultDir
+  $sha = Get-Sha256File $src
+  $leaf = Split-Path -Leaf $src
+  $dest = Join-Path $vaultDir ("{0}_{1}" -f $sha.Substring(0,12), $leaf)
+
+  Copy-Item -LiteralPath $src -Destination $dest -Force
+
+  $meta = [ordered]@{
+    original_path = $src
+    vault_path = $dest
+    sha256 = $sha
+    reason = $reason
+    isolated_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+    quarantine_mode = "CopyOnly"
+  }
+  Write-Text ($dest + ".json") (Json $meta)
+
+  return [ordered]@{ sha256=$sha; original=$src; vault=$dest; reason=$reason }
+}
+
+function Block-OriginalMarker([string]$src, [string]$reason, [string]$runId) {
+  # Safe-by-default: does NOT change behavior; creates a deterministic marker for tooling & evidence
+  $marker = $src + ".clarity.blocked.json"
+  $o = [ordered]@{
+    clarity = "Clarity Validator"
+    run_id = $runId
+    action = "BLOCK_MARKER"
+    original_path = $src
+    reason = $reason
+    issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+    note = "Marker only; original file unchanged. Use restore to remove marker."
+  }
+  Write-Text $marker (Json $o)
+  return $marker
+}
+
+function Block-OriginalRename([string]$src, [string]$reason, [string]$runId) {
+  # Rename is only allowed for startup/ temp style targets, never critical paths
+  $dir = Split-Path -Parent $src
+  $leaf = Split-Path -Leaf $src
+  $dest = Join-Path $dir ($leaf + ".clarity_blocked")
+
+  if (Test-Path -LiteralPath $dest) { throw "Rename target already exists: $dest" }
+
+  Rename-Item -LiteralPath $src -NewName (Split-Path -Leaf $dest)
+
+  $rb = $dest + ".rollback.json"
+  $o = [ordered]@{
+    clarity = "Clarity Validator"
+    run_id = $runId
+    action = "BLOCK_RENAME"
+    original_path = $src
+    blocked_path = $dest
+    reason = $reason
+    issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+    restore_hint = "Use -Command restore to revert blocked_path back to original_path."
+  }
+  Write-Text $rb (Json $o)
+  return [ordered]@{ blocked=$dest; rollback=$rb }
+}
+
+function Restore-FromRollback([string]$rollbackPath) {
+  $rb = Get-Content -Raw -LiteralPath $rollbackPath | ConvertFrom-Json
+  if ($rb.action -ne "BLOCK_RENAME") { throw "Not a rename rollback file: $rollbackPath" }
+  $blocked = [string]$rb.blocked_path
+  $orig = [string]$rb.original_path
+  if (-not (Test-Path -LiteralPath $blocked)) { throw "Blocked file missing: $blocked" }
+  if (Test-Path -LiteralPath $orig) { throw "Original path already exists: $orig" }
+
+  Rename-Item -LiteralPath $blocked -NewName (Split-Path -Leaf $orig)
+  Remove-Item -Force -LiteralPath $rollbackPath
+  return [ordered]@{ restored=$orig }
+}
+
+function Write-Sha256Sums([string]$dir, [string[]]$pathsRelToDir) {
+  $out = Join-Path $dir "sha256sums.txt"
+  if (Test-Path -LiteralPath $out) { Remove-Item -Force -LiteralPath $out }
+  foreach ($rel in $pathsRelToDir) {
+    $p = Join-Path $dir $rel
+    if (Test-Path -LiteralPath $p) {
+      $h = Get-Sha256File $p
+      Append-Text $out ("{0}  {1}" -f $h, $rel.Replace("\","/"))
+    }
+  }
+}
+
+# Resolve roots
+if (-not $RunRoot -or $RunRoot.Trim() -eq "") { $RunRoot = Get-DefaultRunRoot }
+if (-not $VaultRoot -or $VaultRoot.Trim() -eq "") { $VaultRoot = Get-DefaultVaultRoot }
+
+$rules = Load-Rules
+
+# Apply rule defaults for max findings / quarantine if not supplied
+if ($MaxFindings -le 0) { $MaxFindings = [int]$rules.scan.max_findings_default }
+if (-not $QuarantineMode -or $QuarantineMode.Trim() -eq "") { $QuarantineMode = [string]$rules.quarantine.default_mode }
+if (-not $BlockMethod -or $BlockMethod.Trim() -eq "") { $BlockMethod = [string]$rules.quarantine.default_block_method }
+
+$runId = New-RunId
+$runDir = Join-Path $RunRoot $runId
+$artifactDir = Join-Path $runDir "artifact"
+$vaultDir = Join-Path $VaultRoot $runId
+Ensure-Dir $artifactDir
+Ensure-Dir $vaultDir
+
+switch ($Command) {
+  "status" {
+    $disabled = Get-IsDisabled
+    Write-Host ("CLARITY status: {0}" -f ($(if($disabled){"DISABLED"}else{"ENABLED"}))) -ForegroundColor Cyan
+    if ($disabled) {
+      $st = Get-Content -Raw -LiteralPath (Get-DisableStatePath) | ConvertFrom-Json
+      Write-Host ("Disabled until (UTC): {0}" -f $st.disabled_until_utc)
+      Write-Host ("Reason: {0}" -f $st.reason)
+      Write-Host ("Artifact: {0}" -f $st.artifact_dir)
+    }
+    break
+  }
+
+  "disable" {
+    Require-PhysicalPresence
+    if (-not $DisableReason -or $DisableReason.Trim() -eq "") { $DisableReason = "user_requested" }
+
+    $disable = [ordered]@{
+      clarity = "Clarity Validator"
+      action = "DISABLE"
+      disabled_minutes = $DisableMinutes
+      reason = $DisableReason
+      issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+      reenable_at_utc = (Get-Date).ToUniversalTime().AddMinutes($DisableMinutes).ToString("o")
+      mode = "windows_userland_v1_1"
+    }
+    Write-Text (Join-Path $artifactDir "disable.json") (Json $disable)
+    Write-Sha256Sums $artifactDir @("disable.json")
+
+    Set-DisableState -minutes $DisableMinutes -reason $DisableReason -artifactDir $artifactDir
+    Write-Host "CLARITY: disabled (time-bounded). Auto re-enables after window." -ForegroundColor Yellow
+    Write-Host ("Disable artifact: {0}" -f $artifactDir)
+    break
+  }
+
+  "enable" {
+    Require-PhysicalPresence
+    Clear-DisableState
+    $enable = [ordered]@{
+      clarity = "Clarity Validator"
+      action = "ENABLE"
+      issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+      mode = "windows_userland_v1_1"
+    }
+    Write-Text (Join-Path $artifactDir "enable.json") (Json $enable)
+    Write-Sha256Sums $artifactDir @("enable.json")
+    Write-Host "CLARITY: enabled." -ForegroundColor Green
+    Write-Host ("Enable artifact: {0}" -f $artifactDir)
+    break
+  }
+
+  "restore" {
+    Require-PhysicalPresence
+    Write-Host "CLARITY restore:" -ForegroundColor Cyan
+    Write-Host "Paste full path to a *.rollback.json file (created by Rename blocking)" -ForegroundColor Yellow
+    $rb = Read-Host "Rollback file"
+    $res = Restore-FromRollback -rollbackPath $rb
+    Write-Host ("Restored: {0}" -f $res.restored) -ForegroundColor Green
+    break
+  }
+
+  "scan" {
+    if (Get-IsDisabled) {
+      Write-Host "CLARITY: validator is currently DISABLED (time-bounded). Exiting scan." -ForegroundColor Yellow
+      exit 2
+    }
+
+    $mode = "windows_userland_v1_1"
+    $bootVerification = [ordered]@{
+      status = "degraded"
+      reason = "BOOT_CHAIN_NOT_AVAILABLE_IN_USERLAND"
+    }
+
+    $targets = if ($FullScan) { @($TargetRoot) } else { (Get-TargetsFast -root $TargetRoot -rules $rules) }
+
+    $verified = New-Object System.Collections.Generic.List[object]
+    $findings = New-Object System.Collections.Generic.List[object]
+
+    $fileCount = 0
+    foreach ($t in $targets) {
+      Get-ChildItem -LiteralPath $t -File -Recurse -Force -ErrorAction SilentlyContinue |
+        ForEach-Object {
+          if ($findings.Count -ge $MaxFindings) { return }
+          $fi = $_
+          $fileCount++
+
+          $reason = Get-SuspicionReason -fi $fi -rules $rules
+          if ($null -ne $reason) {
+            # Always copy-to-vault (safe)
+            $rec = $null
+            try { $rec = Copy-ToVault -src $fi.FullName -vaultDir $vaultDir -reason $reason } catch {
+              $findings.Add([ordered]@{ path=$fi.FullName; sha256=""; reason="R_VAULT_COPY_FAILED"; vault_path=""; block_action="none"; block_detail=$_.Exception.Message })
+              return
+            }
+
+            # Default safe: do NOT modify original.
+            $blockAction = "none"
+            $blockDetail = ""
+
+            if ($QuarantineMode -eq "CopyAndBlock") {
+              $p = $fi.FullName
+              $isCritical = Is-UnderPrefix -p $p -prefixes $rules.scan.critical_prefixes
+              $isAllowedRoot = Is-UnderPrefix -p $p -prefixes $rules.quarantine.allowed_block_roots
+
+              if ($isCritical) {
+                $blockAction = "refused"
+                $blockDetail = "REFUSED_CRITICAL_PATH"
+              } elseif (-not $isAllowedRoot) {
+                $blockAction = "refused"
+                $blockDetail = "REFUSED_OUTSIDE_ALLOWED_BLOCK_ROOTS"
+              } else {
+                if ($BlockMethod -eq "Marker") {
+                  $m = Block-OriginalMarker -src $p -reason $reason -runId $runId
+                  $blockAction = "marker"
+                  $blockDetail = $m
+                } elseif ($BlockMethod -eq "Rename") {
+                  # Rename allowed ONLY for Startup (very conservative)
+                  $pl = $p.ToLowerInvariant()
+                  if ($pl -like "*\start menu\programs\startup\*") {
+                    $rb = Block-OriginalRename -src $p -reason $reason -runId $runId
+                    $blockAction = "rename"
+                    $blockDetail = $rb.rollback
+                  } else {
+                    $blockAction = "refused"
+                    $blockDetail = "REFUSED_RENAME_NOT_STARTUP"
+                  }
+                }
+              }
+            }
+
+            $findings.Add([ordered]@{
+              path = $rec.original
+              sha256 = $rec.sha256
+              reason = $rec.reason
+              vault_path = $rec.vault
+              quarantine_mode = $QuarantineMode
+              block_method = $BlockMethod
+              block_action = $blockAction
+              block_detail = $blockDetail
+            })
+          } else {
+            $verified.Add([ordered]@{ path=$fi.FullName; size=$fi.Length })
+          }
+        }
+    }
+
+    $report = [ordered]@{
+      clarity = "Clarity Validator"
+      run_id = $runId
+      issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+      mode = $mode
+      target_root = $TargetRoot
+      policy = [ordered]@{
+        quarantine_mode = $QuarantineMode
+        block_method = $BlockMethod
+        safe_by_default = $true
+        note = "Default is CopyOnly (no original modification). Blocking is optional and refused on critical paths."
+      }
+      scan = [ordered]@{
+        full_scan = [bool]$FullScan
+        targets = $targets
+        enumerated_files = $fileCount
+        verified_count = $verified.Count
+        compromised_count = $findings.Count
+        isolated_count = $findings.Count
+        max_findings = $MaxFindings
+      }
+      boot_verification = $bootVerification
+      isolation_vault = [ordered]@{
+        vault_dir = $vaultDir
+        mode = "copy_to_vault"
+      }
+      handoff = [ordered]@{
+        allowed = $true
+        allowed_mode = $(if($findings.Count -gt 0){"restricted"}else{"normal"})
+        note = "v1.1 userland cannot gate boot; canonical contract retained for pre-OS integration"
+      }
+    }
+
+    Write-Text (Join-Path $artifactDir "report.json") (Json $report)
+
+    $vCsv = Join-Path $artifactDir "files_verified.csv"
+    $cCsv = Join-Path $artifactDir "files_compromised.csv"
+
+    "path,size" | Set-Content -LiteralPath $vCsv -Encoding UTF8
+    foreach ($v in $verified) {
+      Add-Content -LiteralPath $vCsv -Value ('"{0}",{1}' -f ($v.path -replace '"','""'), $v.size) -Encoding UTF8
+    }
+
+    "path,sha256,reason,vault_path,quarantine_mode,block_method,block_action,block_detail" | Set-Content -LiteralPath $cCsv -Encoding UTF8
+    foreach ($f in $findings) {
+      Add-Content -LiteralPath $cCsv -Value ('"{0}","{1}","{2}","{3}","{4}","{5}","{6}","{7}"' -f `
+        ($f.path -replace '"','""'), $f.sha256, $f.reason, ($f.vault_path -replace '"','""'), $f.quarantine_mode, $f.block_method, $f.block_action, ($f.block_detail -replace '"','""')) -Encoding UTF8
+    }
+
+    Write-Sha256Sums $artifactDir @("report.json","files_verified.csv","files_compromised.csv")
+
+    Write-Host ""
+    Write-Host "CLARITY RESULT" -ForegroundColor Cyan
+    Write-Host ("  VERIFIED:     {0}" -f $verified.Count) -ForegroundColor Green
+    Write-Host ("  COMPROMISED:  {0}" -f $findings.Count) -ForegroundColor Yellow
+    Write-Host ("  QUARANTINE:   {0} (safe-by-default)" -f $QuarantineMode) -ForegroundColor Gray
+    if ($findings.Count -gt 0) {
+      Write-Host ("  ISOLATION VAULT: {0}" -f $vaultDir) -ForegroundColor Yellow
+      Write-Host ("  ARTIFACT: {0}" -f $artifactDir) -ForegroundColor Gray
+      Write-Host "  Next: open files_compromised.csv for paths + reasons + block_action." -ForegroundColor Yellow
+    } else {
+      Write-Host ("  ARTIFACT: {0}" -f $artifactDir) -ForegroundColor Gray
+    }
+    break
+  }
+
+  default { throw "Unknown command: $Command" }
+}
+.FullName; depth=($d+1) })
+      }
+    } catch {
+      # ignore
+    }
+  }
+
+  return $out
+}
+function Get-TargetsFast([string]$root, $rules) {
+  $targets = New-Object System.Collections.Generic.List[string]
+  foreach ($t in $rules.scan.targets_fast_points) {
+    if (Test-Path -LiteralPath $t) { $targets.Add($t) }
+  }
+  if ($targets.Count -eq 0 -and (Test-Path -LiteralPath $root)) { $targets.Add($root) }
+  return $targets
+}
+
+function Get-SuspicionReason([System.IO.FileInfo]$fi, $rules) {
+  $path = $fi.FullName.ToLowerInvariant()
+  $name = $fi.Name.ToLowerInvariant()
+  $ext = $fi.Extension.ToLowerInvariant()
+
+  $isStartup = ($path -like "*\start menu\programs\startup\*")
+  if ($isStartup -and ($rules.suspicion.startup_bad_extensions -contains $ext)) {
+    return "R_STARTUP_SCRIPT_OR_LINK"
+  }
+
+  $isTempish = ($path -like "*\appdata\local\temp\*") -or ($path -like "*\windows\temp\*")
+  if ($isTempish -and ($rules.suspicion.temp_exec_extensions -contains $ext)) {
+    return "R_TEMP_EXECUTABLE"
+  }
+
+  if ($name -match $rules.suspicion.double_extension_regex) {
+    return "R_DOUBLE_EXTENSION"
+  }
+
+  return $null
+}
+
+function Copy-ToVault([string]$src, [string]$vaultDir, [string]$reason) {
+  Ensure-Dir $vaultDir
+  $sha = Get-Sha256File $src
+  $leaf = Split-Path -Leaf $src
+  $dest = Join-Path $vaultDir ("{0}_{1}" -f $sha.Substring(0,12), $leaf)
+
+  Copy-Item -LiteralPath $src -Destination $dest -Force
+
+  $meta = [ordered]@{
+    original_path = $src
+    vault_path = $dest
+    sha256 = $sha
+    reason = $reason
+    isolated_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+    quarantine_mode = "CopyOnly"
+  }
+  Write-Text ($dest + ".json") (Json $meta)
+
+  return [ordered]@{ sha256=$sha; original=$src; vault=$dest; reason=$reason }
+}
+
+function Block-OriginalMarker([string]$src, [string]$reason, [string]$runId) {
+  # Safe-by-default: does NOT change behavior; creates a deterministic marker for tooling & evidence
+  $marker = $src + ".clarity.blocked.json"
+  $o = [ordered]@{
+    clarity = "Clarity Validator"
+    run_id = $runId
+    action = "BLOCK_MARKER"
+    original_path = $src
+    reason = $reason
+    issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+    note = "Marker only; original file unchanged. Use restore to remove marker."
+  }
+  Write-Text $marker (Json $o)
+  return $marker
+}
+
+function Block-OriginalRename([string]$src, [string]$reason, [string]$runId) {
+  # Rename is only allowed for startup/ temp style targets, never critical paths
+  $dir = Split-Path -Parent $src
+  $leaf = Split-Path -Leaf $src
+  $dest = Join-Path $dir ($leaf + ".clarity_blocked")
+
+  if (Test-Path -LiteralPath $dest) { throw "Rename target already exists: $dest" }
+
+  Rename-Item -LiteralPath $src -NewName (Split-Path -Leaf $dest)
+
+  $rb = $dest + ".rollback.json"
+  $o = [ordered]@{
+    clarity = "Clarity Validator"
+    run_id = $runId
+    action = "BLOCK_RENAME"
+    original_path = $src
+    blocked_path = $dest
+    reason = $reason
+    issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+    restore_hint = "Use -Command restore to revert blocked_path back to original_path."
+  }
+  Write-Text $rb (Json $o)
+  return [ordered]@{ blocked=$dest; rollback=$rb }
+}
+
+function Restore-FromRollback([string]$rollbackPath) {
+  $rb = Get-Content -Raw -LiteralPath $rollbackPath | ConvertFrom-Json
+  if ($rb.action -ne "BLOCK_RENAME") { throw "Not a rename rollback file: $rollbackPath" }
+  $blocked = [string]$rb.blocked_path
+  $orig = [string]$rb.original_path
+  if (-not (Test-Path -LiteralPath $blocked)) { throw "Blocked file missing: $blocked" }
+  if (Test-Path -LiteralPath $orig) { throw "Original path already exists: $orig" }
+
+  Rename-Item -LiteralPath $blocked -NewName (Split-Path -Leaf $orig)
+  Remove-Item -Force -LiteralPath $rollbackPath
+  return [ordered]@{ restored=$orig }
+}
+
+function Write-Sha256Sums([string]$dir, [string[]]$pathsRelToDir) {
+  $out = Join-Path $dir "sha256sums.txt"
+  if (Test-Path -LiteralPath $out) { Remove-Item -Force -LiteralPath $out }
+  foreach ($rel in $pathsRelToDir) {
+    $p = Join-Path $dir $rel
+    if (Test-Path -LiteralPath $p) {
+      $h = Get-Sha256File $p
+      Append-Text $out ("{0}  {1}" -f $h, $rel.Replace("\","/"))
+    }
+  }
+}
+
+# Resolve roots
+if (-not $RunRoot -or $RunRoot.Trim() -eq "") { $RunRoot = Get-DefaultRunRoot }
+if (-not $VaultRoot -or $VaultRoot.Trim() -eq "") { $VaultRoot = Get-DefaultVaultRoot }
+
+$rules = Load-Rules
+
+# Apply rule defaults for max findings / quarantine if not supplied
+if ($MaxFindings -le 0) { $MaxFindings = [int]$rules.scan.max_findings_default }
+if (-not $QuarantineMode -or $QuarantineMode.Trim() -eq "") { $QuarantineMode = [string]$rules.quarantine.default_mode }
+if (-not $BlockMethod -or $BlockMethod.Trim() -eq "") { $BlockMethod = [string]$rules.quarantine.default_block_method }
+
+$runId = New-RunId
+$runDir = Join-Path $RunRoot $runId
+$artifactDir = Join-Path $runDir "artifact"
+$vaultDir = Join-Path $VaultRoot $runId
+Ensure-Dir $artifactDir
+Ensure-Dir $vaultDir
+
+switch ($Command) {
+  "status" {
+    $disabled = Get-IsDisabled
+    Write-Host ("CLARITY status: {0}" -f ($(if($disabled){"DISABLED"}else{"ENABLED"}))) -ForegroundColor Cyan
+    if ($disabled) {
+      $st = Get-Content -Raw -LiteralPath (Get-DisableStatePath) | ConvertFrom-Json
+      Write-Host ("Disabled until (UTC): {0}" -f $st.disabled_until_utc)
+      Write-Host ("Reason: {0}" -f $st.reason)
+      Write-Host ("Artifact: {0}" -f $st.artifact_dir)
+    }
+    break
+  }
+
+  "disable" {
+    Require-PhysicalPresence
+    if (-not $DisableReason -or $DisableReason.Trim() -eq "") { $DisableReason = "user_requested" }
+
+    $disable = [ordered]@{
+      clarity = "Clarity Validator"
+      action = "DISABLE"
+      disabled_minutes = $DisableMinutes
+      reason = $DisableReason
+      issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+      reenable_at_utc = (Get-Date).ToUniversalTime().AddMinutes($DisableMinutes).ToString("o")
+      mode = "windows_userland_v1_1"
+    }
+    Write-Text (Join-Path $artifactDir "disable.json") (Json $disable)
+    Write-Sha256Sums $artifactDir @("disable.json")
+
+    Set-DisableState -minutes $DisableMinutes -reason $DisableReason -artifactDir $artifactDir
+    Write-Host "CLARITY: disabled (time-bounded). Auto re-enables after window." -ForegroundColor Yellow
+    Write-Host ("Disable artifact: {0}" -f $artifactDir)
+    break
+  }
+
+  "enable" {
+    Require-PhysicalPresence
+    Clear-DisableState
+    $enable = [ordered]@{
+      clarity = "Clarity Validator"
+      action = "ENABLE"
+      issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+      mode = "windows_userland_v1_1"
+    }
+    Write-Text (Join-Path $artifactDir "enable.json") (Json $enable)
+    Write-Sha256Sums $artifactDir @("enable.json")
+    Write-Host "CLARITY: enabled." -ForegroundColor Green
+    Write-Host ("Enable artifact: {0}" -f $artifactDir)
+    break
+  }
+
+  "restore" {
+    Require-PhysicalPresence
+    Write-Host "CLARITY restore:" -ForegroundColor Cyan
+    Write-Host "Paste full path to a *.rollback.json file (created by Rename blocking)" -ForegroundColor Yellow
+    $rb = Read-Host "Rollback file"
+    $res = Restore-FromRollback -rollbackPath $rb
+    Write-Host ("Restored: {0}" -f $res.restored) -ForegroundColor Green
+    break
+  }
+
+  "scan" {
+    if (Get-IsDisabled) {
+      Write-Host "CLARITY: validator is currently DISABLED (time-bounded). Exiting scan." -ForegroundColor Yellow
+      exit 2
+    }
+
+    $mode = "windows_userland_v1_1"
+    $bootVerification = [ordered]@{
+      status = "degraded"
+      reason = "BOOT_CHAIN_NOT_AVAILABLE_IN_USERLAND"
+    }
+
+    $targets = if ($FullScan) { @($TargetRoot) } else { (Get-TargetsFast -root $TargetRoot -rules $rules) }
+
+    $verified = New-Object System.Collections.Generic.List[object]
+    $findings = New-Object System.Collections.Generic.List[object]
+
+    $fileCount = 0
+    foreach ($t in $targets) {
+      Get-ChildItem -LiteralPath $t -File -Recurse -Force -ErrorAction SilentlyContinue |
+        ForEach-Object {
+          if ($findings.Count -ge $MaxFindings) { return }
+          $fi = $_
+          $fileCount++
+
+          $reason = Get-SuspicionReason -fi $fi -rules $rules
+          if ($null -ne $reason) {
+            # Always copy-to-vault (safe)
+            $rec = $null
+            try { $rec = Copy-ToVault -src $fi.FullName -vaultDir $vaultDir -reason $reason } catch {
+              $findings.Add([ordered]@{ path=$fi.FullName; sha256=""; reason="R_VAULT_COPY_FAILED"; vault_path=""; block_action="none"; block_detail=$_.Exception.Message })
+              return
+            }
+
+            # Default safe: do NOT modify original.
+            $blockAction = "none"
+            $blockDetail = ""
+
+            if ($QuarantineMode -eq "CopyAndBlock") {
+              $p = $fi.FullName
+              $isCritical = Is-UnderPrefix -p $p -prefixes $rules.scan.critical_prefixes
+              $isAllowedRoot = Is-UnderPrefix -p $p -prefixes $rules.quarantine.allowed_block_roots
+
+              if ($isCritical) {
+                $blockAction = "refused"
+                $blockDetail = "REFUSED_CRITICAL_PATH"
+              } elseif (-not $isAllowedRoot) {
+                $blockAction = "refused"
+                $blockDetail = "REFUSED_OUTSIDE_ALLOWED_BLOCK_ROOTS"
+              } else {
+                if ($BlockMethod -eq "Marker") {
+                  $m = Block-OriginalMarker -src $p -reason $reason -runId $runId
+                  $blockAction = "marker"
+                  $blockDetail = $m
+                } elseif ($BlockMethod -eq "Rename") {
+                  # Rename allowed ONLY for Startup (very conservative)
+                  $pl = $p.ToLowerInvariant()
+                  if ($pl -like "*\start menu\programs\startup\*") {
+                    $rb = Block-OriginalRename -src $p -reason $reason -runId $runId
+                    $blockAction = "rename"
+                    $blockDetail = $rb.rollback
+                  } else {
+                    $blockAction = "refused"
+                    $blockDetail = "REFUSED_RENAME_NOT_STARTUP"
+                  }
+                }
+              }
+            }
+
+            $findings.Add([ordered]@{
+              path = $rec.original
+              sha256 = $rec.sha256
+              reason = $rec.reason
+              vault_path = $rec.vault
+              quarantine_mode = $QuarantineMode
+              block_method = $BlockMethod
+              block_action = $blockAction
+              block_detail = $blockDetail
+            })
+          } else {
+            $verified.Add([ordered]@{ path=$fi.FullName; size=$fi.Length })
+          }
+        }
+    }
+
+    $report = [ordered]@{
+      clarity = "Clarity Validator"
+      run_id = $runId
+      issued_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+      mode = $mode
+      target_root = $TargetRoot
+      policy = [ordered]@{
+        quarantine_mode = $QuarantineMode
+        block_method = $BlockMethod
+        safe_by_default = $true
+        note = "Default is CopyOnly (no original modification). Blocking is optional and refused on critical paths."
+      }
+      scan = [ordered]@{
+        full_scan = [bool]$FullScan
+        targets = $targets
+        enumerated_files = $fileCount
+        verified_count = $verified.Count
+        compromised_count = $findings.Count
+        isolated_count = $findings.Count
+        max_findings = $MaxFindings
+      }
+      boot_verification = $bootVerification
+      isolation_vault = [ordered]@{
+        vault_dir = $vaultDir
+        mode = "copy_to_vault"
+      }
+      handoff = [ordered]@{
+        allowed = $true
+        allowed_mode = $(if($findings.Count -gt 0){"restricted"}else{"normal"})
+        note = "v1.1 userland cannot gate boot; canonical contract retained for pre-OS integration"
+      }
+    }
+
+    Write-Text (Join-Path $artifactDir "report.json") (Json $report)
+
+    $vCsv = Join-Path $artifactDir "files_verified.csv"
+    $cCsv = Join-Path $artifactDir "files_compromised.csv"
+
+    "path,size" | Set-Content -LiteralPath $vCsv -Encoding UTF8
+    foreach ($v in $verified) {
+      Add-Content -LiteralPath $vCsv -Value ('"{0}",{1}' -f ($v.path -replace '"','""'), $v.size) -Encoding UTF8
+    }
+
+    "path,sha256,reason,vault_path,quarantine_mode,block_method,block_action,block_detail" | Set-Content -LiteralPath $cCsv -Encoding UTF8
+    foreach ($f in $findings) {
+      Add-Content -LiteralPath $cCsv -Value ('"{0}","{1}","{2}","{3}","{4}","{5}","{6}","{7}"' -f `
+        ($f.path -replace '"','""'), $f.sha256, $f.reason, ($f.vault_path -replace '"','""'), $f.quarantine_mode, $f.block_method, $f.block_action, ($f.block_detail -replace '"','""')) -Encoding UTF8
+    }
+
+    Write-Sha256Sums $artifactDir @("report.json","files_verified.csv","files_compromised.csv")
+
+    Write-Host ""
+    Write-Host "CLARITY RESULT" -ForegroundColor Cyan
+    Write-Host ("  VERIFIED:     {0}" -f $verified.Count) -ForegroundColor Green
+    Write-Host ("  COMPROMISED:  {0}" -f $findings.Count) -ForegroundColor Yellow
+    Write-Host ("  QUARANTINE:   {0} (safe-by-default)" -f $QuarantineMode) -ForegroundColor Gray
+    if ($findings.Count -gt 0) {
+      Write-Host ("  ISOLATION VAULT: {0}" -f $vaultDir) -ForegroundColor Yellow
+      Write-Host ("  ARTIFACT: {0}" -f $artifactDir) -ForegroundColor Gray
+      Write-Host "  Next: open files_compromised.csv for paths + reasons + block_action." -ForegroundColor Yellow
+    } else {
+      Write-Host ("  ARTIFACT: {0}" -f $artifactDir) -ForegroundColor Gray
+    }
+    break
+  }
+
+  default { throw "Unknown command: $Command" }
+}
+

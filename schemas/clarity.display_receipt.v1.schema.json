@@ -1,0 +1,28 @@
+{
+  "schema": "clarity.display_receipt.schema.v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "receipt_type",
+    "created_at_utc",
+    "session_id",
+    "tenant",
+    "principal",
+    "content_ref",
+    "adapter",
+    "receipt_hash"
+  ],
+  "properties": {
+    "schema": { "type": "string" },
+    "receipt_type": { "type": "string" },
+    "created_at_utc": { "type": "string" },
+    "session_id": { "type": "string" },
+    "tenant": { "type": "string" },
+    "principal": { "type": "string" },
+    "content_ref": { "type": "string" },
+    "adapter": { "type": "string" },
+    "status": { "type": ["string","null"] },
+    "detail": { "type": ["string","null"] },
+    "receipt_hash": { "type": "string" }
+  }
+}
