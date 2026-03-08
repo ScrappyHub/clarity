@@ -1,5 +1,6 @@
-﻿archive/
+archive/
 reports/
+clarity_tier1_files/
 scripts/_scratch/
 
 *.bak
@@ -7,17 +8,16 @@ scripts/_scratch/
 *.corrupt_*
 *.broken_*
 *.pre_restore_*
+*.ok
 *.tmp
 *.log
-*.ok
 
 key
-*.pem
-*.pfx
-*.p12
-*.cer
-*.crt
-*.csr
 *.pub
 
-C:\ProgramData\Clarity\
+scripts/WRAP_*
+scripts/_PATCH_*
+scripts/_patch_*
+scripts/_restore_*
+scripts/bootstrap_patch_*
+scripts/patch_*
