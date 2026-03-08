@@ -1,0 +1,39 @@
+# secrets / keys
+*.pem
+*.key
+*.pfx
+*.p12
+*.cer
+*.crt
+*.csr
+*.sig
+*_ed25519
+*_ed25519.pub
+keys/
+**/keys/
+allowed_signers
+**/allowed_signers
+
+# runtime / generated
+reports/
+proofs/
+tmp/
+temp/
+out/
+dist/
+artifacts/
+receipts/
+*.log
+
+# scratch / backups / corruptions
+scripts/_scratch/
+*.bak
+*.bak_*
+*.broken_*
+*.corrupt_*
+*.pre_restore_*
+*.ok
+
+# editor / OS
+.DS_Store
+Thumbs.db

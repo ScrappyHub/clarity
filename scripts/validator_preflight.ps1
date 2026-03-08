@@ -1,3 +1,4 @@
+$preflight = @'
 param(
   [Parameter(Mandatory=$true)][string]$RuntimeRoot,
   [Parameter(Mandatory=$true)][string]$RepoRoot,
@@ -146,3 +147,4 @@ $json = ($obj | ConvertTo-Json -Compress -Depth 8)
 WriteUtf8NoBomLf $outPath $json
 Write-Host ("VALIDATOR_PREFLIGHT_OK: " + $outPath) -ForegroundColor Green
 Write-Output $outPath
+'@

@@ -1,3 +1,4 @@
+$runner = @'
 param([Parameter(Mandatory=$true)][string]$RepoRoot)
 
 Set-StrictMode -Version Latest
@@ -64,3 +65,4 @@ if(([string]$preObj.trust_tier -eq "FAIL") -and [bool]$gateObj.allowed){
 Write-Host ("HANDOFF_PATH=" + $gatePath) -ForegroundColor Yellow
 Write-Host ("HANDOFF_DECISION=" + [string]$gateObj.decision) -ForegroundColor Yellow
 Write-Host "CLARITY_TIER1_STEP4_OK" -ForegroundColor Green
+'@

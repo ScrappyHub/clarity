@@ -1,3 +1,4 @@
+$gate = @'
 param(
   [Parameter(Mandatory=$true)][string]$RepoRoot,
   [Parameter(Mandatory=$true)][string]$PreflightPath,
@@ -55,3 +56,4 @@ $json = ($obj | ConvertTo-Json -Compress -Depth 6)
 WriteUtf8NoBomLf $outPath $json
 Write-Host ("VALIDATOR_HANDOFF_GATE_OK: " + $outPath) -ForegroundColor Green
 Write-Output $outPath
+'@
