@@ -29,7 +29,18 @@ The intended public script surface is centered on:
 - scripts/display_adapter_windows_sandbox.ps1
 - scripts/display_replay_view.ps1
 - scripts/validator_preflight.ps1
+- scripts/validator_scan_targeted.ps1
+- scripts/validator_isolate_copy.ps1
 - scripts/validator_handoff_gate.ps1
+- scripts/validator_run.ps1
+- scripts/validator_verify_run.ps1
+- scripts/test_validator_host_slice.ps1
+- scripts/test_preflight_assurance_cap.ps1
+- scripts/test_protected_display.ps1
+- scripts/display_adapter_hyperv.ps1
+- scripts/vm_profile_validate.ps1
+- scripts/test_vm_profile_snapshot.ps1
+- vm_profiles/
 - scripts/_RUN_clarity_tier0_step2_v1.ps1
 - scripts/_RUN_clarity_tier0_step3_v1.ps1
 - scripts/_RUN_clarity_tier1_step2_v1.ps1
@@ -62,5 +73,10 @@ Its canonical direction is:
 3. targeted integrity scan
 4. isolation / quarantine
 5. evidence artifact and controlled handoff
+
+The host-side implementation is an adapter and evidence prototype for the
+future firmware/measured-boot authority layer. It must report its assurance
+level explicitly and must not treat Windows Sandbox or Hyper-V as hardware
+authentication sources.
 
 Protected display, replay, Windows Sandbox, and later Hyper-V remain part of the validator shell path and not a separate product.

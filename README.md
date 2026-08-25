@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-# clarity
-=======
 # Clarity
 
 Clarity is a standalone pre-OS validator and protected review instrument.
@@ -43,9 +40,12 @@ The repo is currently proving the validator substrate in deterministic PowerShel
 - library put/get with append-only ledger
 - protected display session open/close
 - Windows Sandbox adapter request generation
+- Hyper-V adapter request generation
+- VM profile and snapshot compatibility validation
 - replay view generation
 - validator preflight
 - validator handoff gate
+- composed validator run with artifact verification
 
 ## Current trust model
 
@@ -97,10 +97,17 @@ The next implementation track is centered on making the validator shell real:
 - session schema and event registry
 - session ledger and receipts
 - protected display model
-- Windows Sandbox adapter first
-- replay view
-- Hyper-V adapter second
+- Windows Sandbox and Hyper-V adapter request paths
+- chained receipt and replay verification
+- profile-bound adapter requests and snapshot policy checks
 - eventual firmware / pre-OS alignment with the original validator design
+
+The current host-side vertical slice is exercised by
+`scripts/test_validator_host_slice.ps1`. It covers clean and suspicious
+target paths, content-addressed isolation, fail-closed handoff, artifact
+hash verification, and tamper rejection. Its assurance level is explicitly
+`A1_HOST_OBSERVED`; it is not a substitute for firmware or measured-boot
+attestation.
 
 ## Design constraints
 
@@ -129,4 +136,3 @@ Today’s repo is the build substrate for that validator system. The direction r
 ## License
 
 TBD
->>>>>>> ce63672 (Docs: add public README for Clarity validator system)

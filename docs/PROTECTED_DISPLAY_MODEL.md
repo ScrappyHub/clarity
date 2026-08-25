@@ -3,7 +3,7 @@
 Purpose
 - Provide a small, boring, deterministic protected display session model for Clarity.
 - Display sessions are content-addressed by session_id, receipted, and replayable.
-- Windows Sandbox is the first adapter. Hyper-V comes later.
+- Windows Sandbox and Hyper-V are host-side adapter surfaces with the same session and receipt model.
 
 Rules
 - Clarity remains standalone. Adapters are optional execution surfaces, never truth sources.
@@ -17,8 +17,10 @@ Runtime layout
 - C:\ProgramData\Clarity\display\receipts\display_receipts.ndjson
 - C:\ProgramData\Clarity\display\adapters\windows_sandbox\requests\<session_id>\request.json
 - C:\ProgramData\Clarity\display\adapters\windows_sandbox\requests\<session_id>\clarity_display.wsb
+- vm_profiles\<profile>.v1.json
 
 Phase status
-- Tier1 Step2 = protected display model + Windows Sandbox adapter request path
-- Hyper-V adapter = next phase
-- Replay view = separate next task after this fileset is in place
+- Tier1 protected display = session model, chained receipts, adapter request binding, and replay verification
+- Windows Sandbox = request/optional launch adapter
+- Hyper-V = deterministic request adapter; VM provisioning remains a future authority-layer implementation
+- VM profiles and snapshot manifests are validated before request creation; manifest-only snapshots remain deferred.
