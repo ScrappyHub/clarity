@@ -1,0 +1,10 @@
+{
+  "schema": "clarity.validator_finding.v1",
+  "type": "object",
+  "required": ["target_path", "reason_code", "severity"],
+  "properties": {
+    "target_path": { "type": "string", "minLength": 1 },
+    "reason_code": { "type": "string", "minLength": 1 },
+    "severity": { "enum": ["informational", "suspicious", "critical"] }
+  }
+}

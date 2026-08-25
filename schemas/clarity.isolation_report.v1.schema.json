@@ -1,0 +1,15 @@
+{
+  "schema": "clarity.isolation_report.v1",
+  "type": "object",
+  "required": ["schema", "run_id", "created_at_utc", "tenant", "principal", "producer_instance", "isolated_count", "ledger_path"],
+  "properties": {
+    "schema": { "const": "clarity.isolation_report.v1" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "created_at_utc": { "type": "string", "minLength": 1 },
+    "tenant": { "type": "string" },
+    "principal": { "type": "string" },
+    "producer_instance": { "type": "string" },
+    "isolated_count": { "type": "integer", "minimum": 0 },
+    "ledger_path": { "type": "string", "minLength": 1 }
+  }
+}

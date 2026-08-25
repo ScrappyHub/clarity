@@ -1,4 +1,3 @@
-$preflight = @'
 param(
   [Parameter(Mandatory=$true)][string]$RuntimeRoot,
   [Parameter(Mandatory=$true)][string]$RepoRoot,
@@ -32,7 +31,15 @@ $reqPaths = @(
   (Join-Path $RepoRoot "scripts\display_session_open.ps1"),
   (Join-Path $RepoRoot "scripts\display_session_close.ps1"),
   (Join-Path $RepoRoot "scripts\display_replay_view.ps1"),
-  (Join-Path $RepoRoot "scripts\display_adapter_windows_sandbox.ps1")
+  (Join-Path $RepoRoot "scripts\display_adapter_windows_sandbox.ps1"),
+  (Join-Path $RepoRoot "scripts\display_adapter_hyperv.ps1"),
+  (Join-Path $RepoRoot "scripts\validator_scan_targeted.ps1"),
+  (Join-Path $RepoRoot "scripts\validator_isolate_copy.ps1"),
+  (Join-Path $RepoRoot "scripts\validator_run.ps1"),
+  (Join-Path $RepoRoot "scripts\validator_verify_run.ps1"),
+  (Join-Path $RepoRoot "scripts\vm_profile_validate.ps1"),
+  (Join-Path $RepoRoot "vm_profiles\protected_review_hyperv.v1.json"),
+  (Join-Path $RepoRoot "vm_profiles\protected_review_sandbox.v1.json")
 )
 
 $missing = New-Object System.Collections.Generic.List[string]
@@ -79,6 +86,22 @@ try {
   }
 } catch {}
 
+$secureBootState = "unknown"
+try {
+  if(Get-Command Confirm-SecureBootUEFI -ErrorAction SilentlyContinue){
+    $secureBootResult = Confirm-SecureBootUEFI
+    $secureBootState = if([bool]$secureBootResult){ "enabled" } else { "disabled" }
+  }
+} catch {}
+
+$hypervisorState = "unknown"
+try {
+  $computerSystem = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+  if($null -ne $computerSystem.HypervisorPresent){
+    $hypervisorState = if([bool]$computerSystem.HypervisorPresent){ "present" } else { "absent" }
+  }
+} catch {}
+
 $requiredRuntimeOk =
   (Test-Path -LiteralPath $keyBase -PathType Leaf) -and
   (Test-Path -LiteralPath $pubPath -PathType Leaf) -and
@@ -91,13 +114,12 @@ $reasonCodes = New-Object System.Collections.Generic.List[string]
 if($missing.Count -gt 0){ [void]$reasonCodes.Add("MISSING_REQUIRED_SCRIPTS") }
 if(-not $requiredRuntimeOk){ [void]$reasonCodes.Add("RUNTIME_NOT_READY") }
 if(-not $tpmPresent){ [void]$reasonCodes.Add("TPM_ABSENT_OR_UNREADABLE") }
+[void]$reasonCodes.Add("HOST_ONLY_ASSURANCE_CAP")
 
 if(($missing.Count -eq 0) -and $requiredRuntimeOk){
-  if($tpmPresent -and $tpmReady){
-    $trustTier = "FULL"
-  } else {
-    $trustTier = "DEGRADED"
-  }
+  # A host-observed TPM state is not a measured-boot quote or hardware
+  # attestation. FULL is reserved for a future authenticated evidence path.
+  $trustTier = "DEGRADED"
 }
 
 $buildHashes = [ordered]@{}
@@ -113,6 +135,7 @@ $obj = [ordered]@{
   created_at_utc = UtcNow
   validator = "clarity"
   mode = "hosted_validator_shell"
+  assurance_level = "A1_HOST_OBSERVED"
   tenant = $Tenant
   principal = $Principal
   producer_instance = $ProducerInstance
@@ -128,6 +151,9 @@ $obj = [ordered]@{
     tpm_present = $tpmPresent
     tpm_ready = $tpmReady
     windows_sandbox_available = $sandboxAvailable
+    secure_boot_state = $secureBootState
+    hypervisor_state = $hypervisorState
+    attestation_status = "unavailable"
   }
   runtime = [ordered]@{
     runtime_root = $RuntimeRoot
@@ -147,4 +173,3 @@ $json = ($obj | ConvertTo-Json -Compress -Depth 8)
 WriteUtf8NoBomLf $outPath $json
 Write-Host ("VALIDATOR_PREFLIGHT_OK: " + $outPath) -ForegroundColor Green
 Write-Output $outPath
-'@

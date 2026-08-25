@@ -1,0 +1,18 @@
+{
+  "schema": "clarity.validator_scan.v1",
+  "type": "object",
+  "required": ["schema", "run_id", "created_at_utc", "scanned_targets", "examined_file_count", "max_files", "suspicious_count", "scan_error_count", "scan_complete", "scan_errors", "findings_path"],
+  "properties": {
+    "schema": { "const": "clarity.validator_scan.v1" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "created_at_utc": { "type": "string", "minLength": 1 },
+    "scanned_targets": { "type": "array", "items": { "type": "string" } },
+    "examined_file_count": { "type": "integer", "minimum": 0 },
+    "max_files": { "type": "integer", "minimum": 1 },
+    "suspicious_count": { "type": "integer", "minimum": 0 },
+    "scan_error_count": { "type": "integer", "minimum": 0 },
+    "scan_complete": { "type": "boolean" },
+    "scan_errors": { "type": "array", "items": { "type": "string" } },
+    "findings_path": { "type": "string", "minLength": 1 }
+  }
+}

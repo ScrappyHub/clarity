@@ -1,0 +1,22 @@
+{
+  "schema": "clarity.validator_handoff_decision.v1",
+  "type": "object",
+  "required": ["schema", "created_at_utc", "preflight_path", "preflight_run_id", "trust_tier", "decision", "allowed", "reason_code"],
+  "properties": {
+    "schema": { "const": "clarity.validator_handoff_decision.v1" },
+    "created_at_utc": { "type": "string", "minLength": 1 },
+    "preflight_path": { "type": "string", "minLength": 1 },
+    "preflight_run_id": { "type": "string", "minLength": 1 },
+    "trust_tier": { "enum": ["FULL", "DEGRADED", "FAIL"] },
+    "decision": { "enum": ["normal", "restricted", "deny"] },
+    "allowed": { "type": "boolean" },
+    "reason_code": { "type": "string", "minLength": 1 },
+    "scan_path": { "type": ["string","null"] },
+    "scan_run_id": { "type": ["string","null"] },
+    "scan_complete": { "type": ["boolean","null"] },
+    "suspicious_count": { "type": ["integer","null"] },
+    "isolation_path": { "type": ["string","null"] },
+    "isolation_run_id": { "type": ["string","null"] },
+    "isolated_count": { "type": ["integer","null"] }
+  }
+}
