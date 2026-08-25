@@ -1,0 +1,43 @@
+{
+  "schema": "clarity.vm_profile.v1",
+  "profile_id": "clarity.protected_review.windows_sandbox",
+  "version": "1.0.0",
+  "adapter": "windows_sandbox",
+  "purpose": "protected_review",
+  "guest": {
+    "os_family": "windows",
+    "firmware": "managed",
+    "secure_boot_required": false,
+    "image_ref": "platform:windows-sandbox-base",
+    "measurement_policy": "host_observed"
+  },
+  "resources": {
+    "vcpu": 2,
+    "memory_mb": 2048,
+    "disk_gb": 16
+  },
+  "configuration": {
+    "networking": "disabled",
+    "clipboard": "disabled",
+    "printer_redirection": "disabled",
+    "audio_input": "disabled",
+    "video_input": "disabled",
+    "host_filesystem_mounts": [],
+    "nested_virtualization": false,
+    "protected_display": true
+  },
+  "isolation": {
+    "host_filesystem": "none",
+    "network": "none",
+    "operator_channel": "protected_display_only",
+    "revert_on_close": true
+  },
+  "snapshot_policy": {
+    "mode": "forbidden",
+    "allowed_states": [],
+    "require_clean_base": true,
+    "max_age_hours": 0,
+    "content_verification_required": false
+  },
+  "required_host_capabilities": ["windows_sandbox"]
+}

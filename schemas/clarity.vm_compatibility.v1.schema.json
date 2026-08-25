@@ -1,0 +1,25 @@
+{
+  "schema": "clarity.vm_compatibility.v1",
+  "type": "object",
+  "required": ["schema", "run_id", "created_at_utc", "adapter", "profile_path", "profile_id", "profile_version", "profile_hash", "configuration_hash", "snapshot_status", "decision", "assurance_level", "host_capabilities", "deny_codes", "defer_codes"],
+  "properties": {
+    "schema": { "const": "clarity.vm_compatibility.v1" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "created_at_utc": { "type": "string", "minLength": 1 },
+    "adapter": { "enum": ["hyperv", "windows_sandbox"] },
+    "profile_path": { "type": "string", "minLength": 1 },
+    "profile_id": { "type": "string", "minLength": 1 },
+    "profile_version": { "type": "string", "minLength": 1 },
+    "profile_hash": { "type": "string", "minLength": 1 },
+    "configuration_hash": { "type": "string", "minLength": 1 },
+    "snapshot_path": { "type": ["string", "null"] },
+    "snapshot_id": { "type": ["string", "null"] },
+    "snapshot_hash": { "type": ["string", "null"] },
+    "snapshot_status": { "type": "string" },
+    "decision": { "enum": ["compatible", "deferred", "deny"] },
+    "assurance_level": { "enum": ["A0_UNAVAILABLE", "A1_HOST_OBSERVED", "A2_ISOLATED_REVIEW", "A3_MEASURED_PLATFORM", "A4_ATTESTED_PLATFORM"] },
+    "host_capabilities": { "type": "object" },
+    "deny_codes": { "type": "array", "items": { "type": "string" } },
+    "defer_codes": { "type": "array", "items": { "type": "string" } }
+  }
+}

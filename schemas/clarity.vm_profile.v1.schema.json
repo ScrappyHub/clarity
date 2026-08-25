@@ -1,0 +1,18 @@
+{
+  "schema": "clarity.vm_profile.v1",
+  "type": "object",
+  "required": ["schema", "profile_id", "version", "adapter", "purpose", "guest", "resources", "configuration", "isolation", "snapshot_policy", "required_host_capabilities"],
+  "properties": {
+    "schema": { "const": "clarity.vm_profile.v1" },
+    "profile_id": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "minLength": 1 },
+    "adapter": { "enum": ["hyperv", "windows_sandbox"] },
+    "purpose": { "type": "string", "minLength": 1 },
+    "guest": { "type": "object" },
+    "resources": { "type": "object" },
+    "configuration": { "type": "object" },
+    "isolation": { "type": "object" },
+    "snapshot_policy": { "type": "object" },
+    "required_host_capabilities": { "type": "array", "items": { "type": "string" } }
+  }
+}

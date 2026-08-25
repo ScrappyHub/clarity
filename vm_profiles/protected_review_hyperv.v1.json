@@ -1,0 +1,43 @@
+{
+  "schema": "clarity.vm_profile.v1",
+  "profile_id": "clarity.protected_review.hyperv",
+  "version": "1.0.0",
+  "adapter": "hyperv",
+  "purpose": "protected_review",
+  "guest": {
+    "os_family": "windows",
+    "firmware": "uefi",
+    "secure_boot_required": true,
+    "image_ref": "cas:sha256:REPLACE_WITH_SIGNED_GUEST_IMAGE_DIGEST",
+    "measurement_policy": "required"
+  },
+  "resources": {
+    "vcpu": 2,
+    "memory_mb": 4096,
+    "disk_gb": 64
+  },
+  "configuration": {
+    "networking": "disabled",
+    "clipboard": "disabled",
+    "printer_redirection": "disabled",
+    "audio_input": "disabled",
+    "video_input": "disabled",
+    "host_filesystem_mounts": [],
+    "nested_virtualization": false,
+    "protected_display": true
+  },
+  "isolation": {
+    "host_filesystem": "none",
+    "network": "none",
+    "operator_channel": "protected_display_only",
+    "revert_on_close": true
+  },
+  "snapshot_policy": {
+    "mode": "optional",
+    "allowed_states": ["offline", "saved"],
+    "require_clean_base": true,
+    "max_age_hours": 24,
+    "content_verification_required": true
+  },
+  "required_host_capabilities": ["hyperv", "uefi", "secure_boot"]
+}
