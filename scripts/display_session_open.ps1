@@ -4,7 +4,7 @@ param(
   [Parameter(Mandatory=$true)][string]$Principal,
   [Parameter(Mandatory=$true)][string]$ProducerInstance,
   [Parameter(Mandatory=$true)][string]$ContentRef,
-  [Parameter(Mandatory=$true)][string]$Adapter,
+  [Parameter(Mandatory=$true)][ValidateSet("windows_sandbox","hyperv")][string]$Adapter,
   [Parameter(Mandatory=$true)][string]$DisplayMode
 )
 Set-StrictMode -Version Latest

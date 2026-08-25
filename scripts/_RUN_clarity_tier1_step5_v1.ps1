@@ -12,6 +12,7 @@ $ProducerInstance = ("{0}-standalone-1" -f $env:COMPUTERNAME)
 $Bootstrap = Join-Path $RepoRoot "scripts\_bootstrap_clarity_standalone_v1.ps1"
 $Open      = Join-Path $RepoRoot "scripts\display_session_open.ps1"
 $Adapter   = Join-Path $RepoRoot "scripts\display_adapter_hyperv.ps1"
+$Profile   = Join-Path $RepoRoot "vm_profiles\protected_review_hyperv.v1.json"
 $Close     = Join-Path $RepoRoot "scripts\display_session_close.ps1"
 $Replay    = Join-Path $RepoRoot "scripts\display_replay_view.ps1"
 
@@ -32,7 +33,7 @@ $sessionId = $sessionMatches[$sessionMatches.Count - 1]
 Write-Host ("SESSION_ID=" + $sessionId) -ForegroundColor Yellow
 
 Write-Host "TIER1_STEP5: hyperv_request" -ForegroundColor DarkGray
-$adapterOut = @(& $PSExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Adapter -RuntimeRoot $RuntimeRoot -SessionId $sessionId)
+$adapterOut = @(& $PSExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Adapter -RuntimeRoot $RuntimeRoot -SessionId $sessionId -ProfilePath $Profile)
 
 $requestMatches = @(
   $adapterOut |

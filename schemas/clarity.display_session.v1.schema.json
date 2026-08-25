@@ -1,5 +1,5 @@
 {
-  "schema": "clarity.display_session.schema.v1",
+  "schema": "clarity.display_session.v1",
   "type": "object",
   "required": [
     "schema",

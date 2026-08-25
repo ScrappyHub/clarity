@@ -9,6 +9,7 @@ $ProducerInstance = ("{0}-standalone-1" -f $env:COMPUTERNAME)
 $Bootstrap = Join-Path $RepoRoot "scripts\_bootstrap_clarity_standalone_v1.ps1"
 $Open = Join-Path $RepoRoot "scripts\display_session_open.ps1"
 $Adapter = Join-Path $RepoRoot "scripts\display_adapter_windows_sandbox.ps1"
+$Profile = Join-Path $RepoRoot "vm_profiles\protected_review_sandbox.v1.json"
 $Close = Join-Path $RepoRoot "scripts\display_session_close.ps1"
 Write-Host "TIER1_STEP2: bootstrap" -ForegroundColor DarkGray
 & $PSExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Bootstrap -RepoRoot $RepoRoot | Out-Host
@@ -18,7 +19,7 @@ $sessionId = @($openOut | ForEach-Object { $_.ToString().Trim() } | Where-Object
 if(-not $sessionId){ throw "NO_SESSION_ID_FOUND" }
 Write-Host ("SESSION_ID=" + $sessionId) -ForegroundColor Yellow
 Write-Host "TIER1_STEP2: sandbox_request" -ForegroundColor DarkGray
-$adapterOut = @(& $PSExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Adapter -RuntimeRoot $RuntimeRoot -SessionId $sessionId)
+$adapterOut = @(& $PSExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Adapter -RuntimeRoot $RuntimeRoot -SessionId $sessionId -ProfilePath $Profile)
 $requestPath = @($adapterOut | ForEach-Object { $_.ToString().Trim() } | Where-Object { $_ -like "*.json" })[-1]
 $wsbPath = @($adapterOut | ForEach-Object { $_.ToString().Trim() } | Where-Object { $_ -like "*.wsb" })[-1]
 if(-not (Test-Path -LiteralPath $requestPath -PathType Leaf)){ throw "MISSING_ADAPTER_REQUEST_JSON" }

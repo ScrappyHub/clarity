@@ -1,6 +1,8 @@
 param(
   [Parameter(Mandatory=$true)][string]$RuntimeRoot,
-  [Parameter(Mandatory=$true)][string]$SessionId
+  [Parameter(Mandatory=$true)][string]$SessionId,
+  [Parameter(Mandatory=$true)][string]$ProfilePath,
+  [Parameter(Mandatory=$false)][string]$SnapshotPath = ""
 )
 
 Set-StrictMode -Version Latest
@@ -21,6 +23,19 @@ $session = Get-Content -Raw -LiteralPath $sessionPath -Encoding UTF8 | ConvertFr
 
 if([string]$session.adapter -ne "hyperv"){ throw "SESSION_ADAPTER_MISMATCH_NOT_HYPERV" }
 if([string]$session.status -ne "open"){ throw "SESSION_NOT_OPEN" }
+if(-not (Test-Path -LiteralPath $ProfilePath -PathType Leaf)){ throw ("MISSING_PROFILE: " + $ProfilePath) }
+
+$PSExe = (Get-Command powershell.exe -ErrorAction Stop).Source
+$Validator = Join-Path $PSScriptRoot "vm_profile_validate.ps1"
+$validationArgs = @("-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-File",$Validator,"-RepoRoot",(Split-Path -Parent $PSScriptRoot),"-ProfilePath",$ProfilePath,"-Adapter","hyperv")
+if($SnapshotPath){ $validationArgs += @("-SnapshotPath",$SnapshotPath) }
+$validationOutput = @(& $PSExe @validationArgs)
+$validationMatches = @($validationOutput | ForEach-Object { $line=$_.ToString().Trim(); if($line -like "*.vm_compatibility.json" -and (Test-Path -LiteralPath $line -PathType Leaf)){ $line } })
+if($validationMatches.Count -eq 0){ throw "MISSING_VM_COMPATIBILITY_REPORT" }
+$validationPath = $validationMatches[$validationMatches.Count - 1]
+$validation = Get-Content -Raw -LiteralPath $validationPath -Encoding UTF8 | ConvertFrom-Json
+if([string]$validation.decision -eq "deny"){ throw ("VM_PROFILE_DENIED: " + (($validation.deny_codes) -join ",")) }
+$validationHash = Sha256HexFile $validationPath
 
 $reqRoot = Join-Path $RuntimeRoot ("display\adapters\hyperv\requests\" + $SessionId)
 EnsureDir $reqRoot
@@ -31,8 +46,8 @@ $launchCmd   = Join-Path $reqRoot "launch.cmd"
 $hypervAvailable = $false
 if(Get-Command Get-VM -ErrorAction SilentlyContinue){ $hypervAvailable = $true }
 
-$status = "requested"
-$detail = "hyperv_request_materialized"
+$status = if([string]$validation.decision -eq "deferred"){ "deferred" } else { "requested" }
+$detail = if($status -eq "deferred"){ "hyperv_request_deferred" } else { "hyperv_request_materialized" }
 if(-not $hypervAvailable){ $detail = "hyperv_module_not_present_or_unavailable" }
 
 $obj = [ordered]@{
@@ -47,8 +62,22 @@ $obj = [ordered]@{
   hyperv_available = $hypervAvailable
   status           = $status
   detail           = $detail
+  profile_path = $ProfilePath
+  profile_id = [string]$validation.profile_id
+  profile_version = [string]$validation.profile_version
+  profile_hash = [string]$validation.profile_hash
+  configuration_hash = [string]$validation.configuration_hash
+  profile_validation_path = $validationPath
+  profile_validation_hash = $validationHash
+  profile_decision = [string]$validation.decision
+  snapshot_path = if($SnapshotPath){ $SnapshotPath } else { $null }
+  snapshot_id = $validation.snapshot_id
+  snapshot_hash = $validation.snapshot_hash
+  snapshot_status = [string]$validation.snapshot_status
 }
 
+$requestHash = CL-RequestHash $obj
+$obj["request_hash"] = $requestHash
 $json = ($obj | ConvertTo-Json -Compress -Depth 6)
 WriteUtf8NoBomLf $requestPath $json
 
@@ -57,14 +86,15 @@ $cmdLines = @(
   'REM Clarity Hyper-V launch stub',
   ('REM SessionId=' + $SessionId),
   ('REM RequestJson=' + $requestPath),
+  ('REM ProfileId=' + [string]$validation.profile_id),
+  ('REM ProfileHash=' + [string]$validation.profile_hash),
   ('echo CLARITY_HYPERV_REQUEST_READY ' + $SessionId)
 )
-WriteUtf8NoBomLf $launchCmd (($cmdLines -join "
-") + "
-")
+WriteUtf8NoBomLf $launchCmd (($cmdLines -join "`n") + "`n")
 
-[void](CL-AppendDisplayReceipt -RuntimeRoot $RuntimeRoot -ReceiptType "clarity.display.adapter.hyperv.requested.v1" -SessionId ([string]$session.session_id) -Tenant ([string]$session.tenant) -Principal ([string]$session.principal) -ContentRef ([string]$session.content_ref) -Adapter "hyperv" -Status $status -Detail $detail)
+[void](CL-AppendDisplayReceipt -RuntimeRoot $RuntimeRoot -ReceiptType "clarity.display.adapter.hyperv.requested.v1" -SessionId ([string]$session.session_id) -Tenant ([string]$session.tenant) -Principal ([string]$session.principal) -ContentRef ([string]$session.content_ref) -Adapter "hyperv" -Status $status -Detail ($detail + ";request_hash=" + $requestHash))
 
 Write-Host ("HYPERV_ADAPTER_OK: " + $SessionId) -ForegroundColor Green
 Write-Output $requestPath
 Write-Output $launchCmd
+Write-Output $validationPath

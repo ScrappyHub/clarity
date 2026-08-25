@@ -1,16 +1,20 @@
 {
-  ""schema"": ""event_types.v1"",
-  ""producer"": ""clarity"",
-  ""types"": [
-    ""clarity.run.started.v1"",
-    ""clarity.verification.result.v1"",
-    ""clarity.run.completed.v1"",
-    ""clarity.library.object.added.v1"",
-    ""clarity.library.object.sealed.v1"",
-    ""clarity.nfl.packet.built.v1"",
-    ""clarity.nfl.packet.verified.v1"",
-    ""clarity.nfl.pledged.local.v1"",
-    ""clarity.nfl.duplicated.v1"",
-    ""clarity.nfl.duplicate.failed.v1""
+  "schema": "event_types.v1",
+  "producer": "clarity",
+  "types": [
+    "clarity.run.started.v1",
+    "clarity.verification.result.v1",
+    "clarity.run.completed.v1",
+    "clarity.library.object.added.v1",
+    "clarity.library.object.sealed.v1",
+    "clarity.nfl.packet.built.v1",
+    "clarity.nfl.packet.verified.v1",
+    "clarity.nfl.pledged.local.v1",
+    "clarity.nfl.duplicated.v1",
+    "clarity.nfl.duplicate.failed.v1",
+    "clarity.validator.preflight.completed.v1",
+    "clarity.validator.scan.completed.v1",
+    "clarity.validator.isolation.completed.v1",
+    "clarity.validator.handoff.decided.v1"
   ]
 }

@@ -9,6 +9,7 @@ $ProducerInstance = ("{0}-standalone-1" -f $env:COMPUTERNAME)
 $Bootstrap = Join-Path $RepoRoot "scripts\_bootstrap_clarity_standalone_v1.ps1"
 $Open = Join-Path $RepoRoot "scripts\display_session_open.ps1"
 $Adapter = Join-Path $RepoRoot "scripts\display_adapter_windows_sandbox.ps1"
+$Profile = Join-Path $RepoRoot "vm_profiles\protected_review_sandbox.v1.json"
 $Close = Join-Path $RepoRoot "scripts\display_session_close.ps1"
 $Replay = Join-Path $RepoRoot "scripts\display_replay_view.ps1"
 Write-Host "TIER1_STEP3: bootstrap" -ForegroundColor DarkGray
@@ -19,7 +20,7 @@ $sessionId = @($openOut | ForEach-Object { $_.ToString().Trim() } | Where-Object
 if(-not $sessionId){ throw "NO_SESSION_ID_FOUND" }
 Write-Host ("SESSION_ID=" + $sessionId) -ForegroundColor Yellow
 Write-Host "TIER1_STEP3: sandbox_request" -ForegroundColor DarkGray
-& $PSExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Adapter -RuntimeRoot $RuntimeRoot -SessionId $sessionId | Out-Host
+& $PSExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Adapter -RuntimeRoot $RuntimeRoot -SessionId $sessionId -ProfilePath $Profile | Out-Host
 Write-Host "TIER1_STEP3: close_session" -ForegroundColor DarkGray
 & $PSExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Close -RuntimeRoot $RuntimeRoot -SessionId $sessionId | Out-Host
 Write-Host "TIER1_STEP3: replay_view" -ForegroundColor DarkGray

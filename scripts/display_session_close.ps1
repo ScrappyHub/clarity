@@ -10,6 +10,7 @@ if(-not (Test-Path -LiteralPath $RuntimeRoot -PathType Container)){ throw ("MISS
 $sessionPath = CL-SessionPath $RuntimeRoot $SessionId
 if(-not (Test-Path -LiteralPath $sessionPath -PathType Leaf)){ throw ("MISSING_SESSION: " + $sessionPath) }
 $obj = Get-Content -Raw -LiteralPath $sessionPath -Encoding UTF8 | ConvertFrom-Json
+if([string]$obj.status -ne "open"){ throw "SESSION_NOT_OPEN" }
 $obj.closed_at_utc = CL-UtcNow
 $obj.status = "closed"
 [void](CL-WriteJsonFile $sessionPath $obj)

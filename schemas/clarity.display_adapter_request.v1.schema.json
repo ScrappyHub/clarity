@@ -1,0 +1,27 @@
+{
+  "schema": "clarity.display_adapter_request.v1",
+  "type": "object",
+  "required": ["schema", "adapter", "session_id", "tenant", "principal", "content_ref", "display_mode", "profile_id", "profile_hash", "configuration_hash", "profile_validation_path", "profile_validation_hash", "profile_decision", "snapshot_status", "request_hash"],
+  "properties": {
+    "schema": { "type": "string" },
+    "adapter": { "enum": ["windows_sandbox", "hyperv"] },
+    "session_id": { "type": "string", "minLength": 1 },
+    "tenant": { "type": "string" },
+    "principal": { "type": "string" },
+    "content_ref": { "type": "string" },
+    "display_mode": { "type": "string" },
+    "profile_path": { "type": "string" },
+    "profile_id": { "type": "string", "minLength": 1 },
+    "profile_version": { "type": "string" },
+    "profile_hash": { "type": "string", "minLength": 1 },
+    "configuration_hash": { "type": "string", "minLength": 1 },
+    "profile_validation_path": { "type": "string", "minLength": 1 },
+    "profile_validation_hash": { "type": "string", "minLength": 1 },
+    "profile_decision": { "enum": ["compatible", "deferred"] },
+    "snapshot_path": { "type": ["string", "null"] },
+    "snapshot_id": { "type": ["string", "null"] },
+    "snapshot_hash": { "type": ["string", "null"] },
+    "snapshot_status": { "type": "string" },
+    "request_hash": { "type": "string", "minLength": 1 }
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "schema": "clarity.display_receipt.schema.v1",
+  "schema": "clarity.display_receipt.v1",
   "type": "object",
   "required": [
     "schema",
@@ -10,6 +10,7 @@
     "principal",
     "content_ref",
     "adapter",
+    "prev_receipt_hash",
     "receipt_hash"
   ],
   "properties": {
@@ -23,6 +24,7 @@
     "adapter": { "type": "string" },
     "status": { "type": ["string","null"] },
     "detail": { "type": ["string","null"] },
+    "prev_receipt_hash": { "type": "string" },
     "receipt_hash": { "type": "string" }
   }
 }
