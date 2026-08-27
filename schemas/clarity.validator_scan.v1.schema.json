@@ -13,6 +13,22 @@
     "scan_error_count": { "type": "integer", "minimum": 0 },
     "scan_complete": { "type": "boolean" },
     "scan_errors": { "type": "array", "items": { "type": "string" } },
-    "findings_path": { "type": "string", "minLength": 1 }
+    "findings_path": { "type": "string", "minLength": 1 },
+
+    "rules_version": { "type": "string" },
+    "rules_hash": { "type": "string" },
+    "baseline_path": { "type": ["string", "null"] },
+    "baseline_hash": { "type": ["string", "null"] },
+    "classified_counts": {
+      "type": "object",
+      "properties": {
+        "verified": { "type": "integer", "minimum": 0 },
+        "unknown": { "type": "integer", "minimum": 0 },
+        "suspicious": { "type": "integer", "minimum": 0 },
+        "compromised": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "missing_critical_count": { "type": "integer", "minimum": 0 },
+    "missing_critical": { "type": "array", "items": { "type": "string" } }
   }
 }
