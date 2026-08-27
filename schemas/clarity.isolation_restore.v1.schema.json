@@ -1,0 +1,20 @@
+{
+  "schema": "clarity.isolation_restore.v1",
+  "type": "object",
+  "required": ["schema", "run_id", "created_at_utc", "object_sha256", "destination_path", "restored_hash", "authorized", "decision", "ledger_path"],
+  "properties": {
+    "schema": { "const": "clarity.isolation_restore.v1" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "created_at_utc": { "type": "string", "minLength": 1 },
+    "tenant": { "type": "string" },
+    "principal": { "type": "string" },
+    "producer_instance": { "type": "string" },
+    "object_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "destination_path": { "type": "string", "minLength": 1 },
+    "restored_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "authorized": { "type": "boolean" },
+    "decision": { "enum": ["restored", "restored_idempotent"] },
+    "critical_override": { "type": "boolean" },
+    "ledger_path": { "type": "string", "minLength": 1 }
+  }
+}

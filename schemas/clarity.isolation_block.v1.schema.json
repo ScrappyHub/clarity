@@ -1,0 +1,21 @@
+{
+  "schema": "clarity.isolation_block.v1",
+  "type": "object",
+  "required": ["schema", "run_id", "created_at_utc", "target_path", "mode", "decision", "critical", "ledger_path"],
+  "properties": {
+    "schema": { "const": "clarity.isolation_block.v1" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "created_at_utc": { "type": "string", "minLength": 1 },
+    "tenant": { "type": "string" },
+    "principal": { "type": "string" },
+    "producer_instance": { "type": "string" },
+    "target_path": { "type": "string", "minLength": 1 },
+    "object_sha256": { "type": ["string", "null"] },
+    "mode": { "enum": ["ReportOnly", "Marker"] },
+    "decision": { "enum": ["block_reported", "blocked_marker", "blocked_logical"] },
+    "critical": { "type": "boolean" },
+    "marker_path": { "type": ["string", "null"] },
+    "reason_code": { "type": "string" },
+    "ledger_path": { "type": "string", "minLength": 1 }
+  }
+}
