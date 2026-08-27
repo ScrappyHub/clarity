@@ -28,7 +28,7 @@ Proof: `CLARITY_TIER0_STEP2_OK`, `CLARITY_TIER0_STEP3_OK`. **Status: met.**
 
 ---
 
-## Tier-1 — Hosted validator shell — **~80%, NOT YET DONE**
+## Tier-1 — Hosted validator shell — **~90%, NEARLY DONE** (updated 2026-08-27)
 
 Required and their status:
 
@@ -41,15 +41,15 @@ Required and their status:
 | Validator preflight + trust-tier + assurance cap | DONE |
 | Handoff gate (fail-closed) | DONE |
 | Composed validator run + artifact-hash verifier + tamper test | DONE |
-| Targeted scanner (deterministic pipeline) | PARTIAL — narrow detection |
-| **Scanner consumes `clarity_rules.json` + per-file hashing + baseline + full taxonomy** | **NOT DONE** |
-| **Isolation vault: copy/CAS/chained-ledger/safety-gates** | DONE |
-| **Isolation restore + execution-block + critical-file safety gate** | **NOT DONE** |
-| **Sealed (signed) validator-run bundle** | **NOT DONE** |
-| Final human-readable validator summary screen | NOT DONE |
-| Negative tests: missing-critical-file, changed-hash, corrupt-vault-copy, unauthorized-restore | NOT DONE |
+| Scanner consumes `clarity_rules.json` + baseline + full taxonomy | **DONE (Step 6, 2026-08-27)** |
+| Isolation vault: copy/CAS/chained-ledger/safety-gates | DONE |
+| Isolation restore + execution-block + critical-file safety gate | **DONE (Step 7, 2026-08-27)** |
+| Sealed (signed) validator-run bundle | **DONE (Step 9.1, 2026-08-27)** |
+| Negative tests: changed-hash, missing-critical, corrupt-vault-object, unauthorized-restore, wrong-signature | **DONE** |
+| Final human-readable validator summary screen | NOT DONE (Step 10) |
+| Per-file signature/signer validation in scanner | NOT DONE |
 
-Tier-1 is **done** when the three bolded gaps close, the scanner emits `verified/unknown/suspicious/compromised` classifications from a real ruleset+baseline, isolation can restore under authorization with receipts, and the run bundle is signed. Target token for the isolation milestone: `CLARITY_TIER1_STEP7_OK`.
+Tier-1's three former blockers (scanner depth, isolation restore/exec-block, run signing) are now closed and proven (`SCANNER_BASELINE_TEST_OK`, `CLARITY_TIER1_STEP7_OK`, `CLARITY_TIER1_STEP7B_OK`, `CLARITY_TIER1_STEP9_OK`). The remaining Tier-1 gap is the **protected result screen (Step 10)** and per-file signature validation. Real boot-target verification (Step 8) belongs to Tier-2.
 
 ---
 
@@ -78,7 +78,7 @@ Regulated/defense certification is a separate, additional program (threat analys
 | Level | Reached when |
 |---|---|
 | `A1_HOST_OBSERVED` | Host reports capabilities + complete deterministic local evidence chain. **Reached today.** |
-| `A2_ISOLATED_REVIEW` | Review path isolated through a live hypervisor/protected surface **and** the session is replayable **and** the run bundle is signed. |
+| `A2_ISOLATED_REVIEW` | Review path isolated through a live hypervisor/protected surface **and** the session is replayable **and** the run bundle is signed (signed-bundle criterion met 2026-08-27, Step 9.1; live-hypervisor + replay-of-live-session still pending). |
 | `A3_MEASURED_PLATFORM` | Firmware, loader, policy, and runtime measurements verified against an approved baseline. |
 | `A4_ATTESTED_PLATFORM` | A3 + TPM/TEE-backed attestation and validated key provenance. |
 

@@ -1,5 +1,7 @@
 # Clarity — Current State Audit
 
+> **Update 2026-08-27.** Steps 6, 7, and 9.1 from the frozen sequence are now built, tested, and committed on branch `feat/validator-step6-7-9` (proven by `SCANNER_BASELINE_TEST_OK`, `CLARITY_TIER1_STEP7_OK`, `CLARITY_TIER1_STEP7B_OK`, `CLARITY_TIER1_STEP9_OK`, regression-clean `HOST_SLICE_TEST_OK`). The scanner now consumes `clarity_rules.json` + a baseline registry with a full classification taxonomy; isolation gained an authorized restore pipeline, an execution-block, and a critical-file safety gate; and validator runs can now be Ed25519-sealed and verified. The sections below are the original 2026-08-20 audit; the estimates in §3, the divergences in §4, and invariant I4 in §5 are annotated inline where this update changes them.
+
 Audit date: 2026-08-20
 Repository: `C:\dev\clarity` (public: `ScrappyHub/clarity`)
 Auditor scope: full working tree on device `anakin`, reconciled against the canonical handoff document and the in-repo docs.
@@ -71,9 +73,9 @@ The handoff document's percentages predate the uncommitted work. Grounded re-est
 | Validator preflight | 70% | 85% | Capability probe + assurance cap + tests done |
 | Sandbox abstraction | 75% | 75% | Request-level; no live guest |
 | Hyper-V abstraction | 55% | 60% | + profile/snapshot compatibility engine |
-| Targeted scan | 10–20% | **45%** | Deterministic pipeline + tests done; detection still narrow |
-| Isolation vault | 10–20% | **65%** | Copy/CAS/chained-ledger/safety-gates done; no restore or exec-block |
-| Composed run + verify | (not listed) | **80%** | Full chain + tamper-checking verifier + host-slice test |
+| Targeted scan | 10–20% | **~70%** (was 45%) | Rules + baseline + verified/unknown/suspicious/compromised taxonomy done (Step 6). No per-file signer/signature check yet |
+| Isolation vault | 10–20% | **~85%** (was 65%) | Copy/CAS/chained-ledger/safety-gates **plus** authorized restore + execution-block + critical-file gate done (Step 7) |
+| Composed run + verify | (not listed) | **~90%** (was 80%) | Full chain + tamper-checking verifier + Ed25519 sealed/signed bundle (Step 9.1) |
 | VM profile/snapshot compat | (not listed) | **70%** | Engine + negative tests done; no live VM |
 | Actual boot-target verification | 10–15% | 10% | Gate consumes trust tier + scan, not a real boot target |
 | Bootable validator | <10% | <10% | Not started |
@@ -85,11 +87,11 @@ Overall hosted-shell milestone: the handoff doc's "~70–75%" is now conservativ
 
 ## 4. Divergences and defects worth flagging
 
-1. **`clarity_rules.json` is defined but unused by the scanner.** The rules file (v1_4) specifies fast-scan target points, critical prefixes, skip-dir names, startup/temp suspicious-extension lists, a double-extension regex, and quarantine modes/limits. `validator_scan_targeted.ps1` implements none of it — it hard-codes System32/SysWOW64/Program Files roots and only checks zero-length executables. This is the single largest capability gap between stated policy and behavior.
+1. ~~**`clarity_rules.json` is defined but unused by the scanner.**~~ **[RESOLVED 2026-08-27, Step 6.]** `validator_scan_targeted.ps1` now consumes the rules file's suspicion heuristics (zero-length exe, double-extension, startup/temp executable) and an optional `clarity.baseline.v1` registry, and classifies each file verified/unknown/suspicious/compromised. Remaining scanner gap: per-file signature/signer validation.
 
-2. **Validator runs are hash-bound but not signed.** Tier-0 packets use Ed25519 (Option A) with allowed-signers trust. The `clarity.validator_run.v1` manifest binds phase artifacts by SHA-256 but is not itself signed, so `validator_verify_run.ps1` proves *internal integrity*, not *origin authenticity*. Sealing/signing the run is a named gap.
+2. ~~**Validator runs are hash-bound but not signed.**~~ **[RESOLVED 2026-08-27, Step 9.1.]** `validator_seal.ps1` gathers a run into a portable bundle and Ed25519-signs its `sha256sums.txt` (namespace `clarity.validator_run.v1`, same mechanism as Option A packets); `validator_verify_seal.ps1` verifies hashes + signature against `allowed_signers`. Runs now carry *origin authenticity*, not just internal integrity.
 
-3. **No isolation restore or execution-block.** The vault preserves and records but cannot yet restore (`isolation_restore.ps1` absent) or apply the policy-driven execution restriction described in the architecture. Restore receipts and the critical-file safety gate are unimplemented.
+3. ~~**No isolation restore or execution-block.**~~ **[RESOLVED 2026-08-27, Step 7.]** `isolation_restore.ps1` performs authorized, hash-verified restore with a boot-critical safety gate and a hash-chained restore ledger (evidence preserved, copy-not-move); `isolation_block.ps1` provides ReportOnly/Marker/critical-logical execution-block with a non-destructive sidecar marker.
 
 4. **Handoff gate is not a boot-target verifier.** Action 2 ("verify the object about to receive execution") is not implemented against a real EFI/boot-manager/kernel target. The gate reasons over trust tier + scan/isolation counts only. The `HANDOFF_TARGET_*` reason-code family is designed but unused.
 
@@ -108,7 +110,7 @@ Overall hosted-shell milestone: the handoff doc's "~70–75%" is now conservativ
 | I1 Verification must not mutate the object | HOLDS | Isolation copies, re-hashes source pre/post copy |
 | I2 FAIL never yields NORMAL handoff | HOLDS | Gate maps FAIL→deny unconditionally |
 | I3 DEGRADED never silently becomes FULL | HOLDS | Preflight caps at DEGRADED; assurance-cap test |
-| I4 Isolation preserves recoverability | PARTIAL | Copy + ledger preserve; restore path not built |
+| I4 Isolation preserves recoverability | HOLDS (2026-08-27) | Copy + ledger preserve; authorized restore pipeline now built (Step 7) with evidence preserved |
 | I5 Never silently deletes evidence | HOLDS | Copy-not-move; append-only ledger |
 | I6 Every security decision has a reason code | HOLDS | Reason/deny/defer codes throughout |
 | I7 Unique protected-display session identity | HOLDS | GUID session IDs |
@@ -128,10 +130,10 @@ Clarity does **not** run in BIOS/firmware; does **not** verify a real boot targe
 
 ## 7. Governance & immediate risk
 
-The primary near-term risk is **not** technical — it is that roughly a dozen substantive, tested validator scripts and schemas are **uncommitted**. A lost working tree would erase the entire validator-shell layer. Recommended immediate action: commit the validator-shell work (preflight/scan/isolate/handoff/run/verify + VM profile + tests + schemas + docs) on a branch, prune the `.bak/.corrupt/.broken` debris, and tag the hosted-shell milestone. A stale `.git/index.lock` was observed and should be cleared before committing.
+The primary near-term risk identified in this audit — roughly a dozen substantive, tested validator scripts and schemas sitting **uncommitted** — is **[RESOLVED 2026-08-27].** The validator-shell layer was committed and pushed as branch `feat/validator-shell-milestone` (5 commits), and Steps 6/7/9.1 as branch `feat/validator-step6-7-9` (3 commits). Debris remains gitignored (not tracked). Neither branch is merged to `main` yet — merging (and pushing `feat/validator-step6-7-9`) is the remaining housekeeping. The stale `.git/index.lock` recurs between runs and is cleared automatically by the commit scripts.
 
 ---
 
 ## 8. Next implementation boundary
 
-Consistent with the spec's frozen sequence, the next green-able work is: (a) make the scanner consume `clarity_rules.json` and add per-file hashing + a real classification taxonomy; (b) add isolation restore + execution-block + critical-file safety gate; (c) sign the validator-run manifest. Real boot-target verification (Action 2 / Tier-2) follows. Firmware/UEFI remains last and must reproduce, not redefine, the reference semantics proven here.
+Consistent with the spec's frozen sequence, items (a) scanner depth, (b) isolation restore + execution-block + critical-file gate, and (c) run signing are **done (Steps 6, 7, 9.1, 2026-08-27)**. The next green-able work is **Action 2 — real boot/handoff-target verification (Step 8)** and the **protected result screen (Step 10)**. Real host boot-target verification (Tier-2) follows. Firmware/UEFI remains last and must reproduce, not redefine, the reference semantics proven here.
