@@ -1,0 +1,26 @@
+{
+  "schema": "clarity.validator_seal.v1",
+  "type": "object",
+  "required": ["schema", "run_id", "created_at_utc", "principal", "namespace", "key_id", "sha256sums_sha256", "files", "sig_ref"],
+  "properties": {
+    "schema": { "const": "clarity.validator_seal.v1" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "created_at_utc": { "type": "string", "minLength": 1 },
+    "principal": { "type": "string", "minLength": 1 },
+    "namespace": { "type": "string", "minLength": 1 },
+    "key_id": { "type": "string", "minLength": 1 },
+    "sha256sums_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "sha256"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "sig_ref": { "type": "string", "minLength": 1 }
+  }
+}
