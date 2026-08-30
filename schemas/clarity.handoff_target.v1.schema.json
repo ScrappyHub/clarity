@@ -1,0 +1,29 @@
+{
+  "schema": "clarity.handoff_target.v1",
+  "type": "object",
+  "required": ["schema", "run_id", "created_at_utc", "target_path", "target_sha256", "verdict", "reason_code", "allowed"],
+  "properties": {
+    "schema": { "const": "clarity.handoff_target.v1" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "created_at_utc": { "type": "string", "minLength": 1 },
+    "target_path": { "type": "string", "minLength": 1 },
+    "target_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "verdict": {
+      "enum": [
+        "HANDOFF_TARGET_VALID",
+        "HANDOFF_TARGET_UNKNOWN",
+        "HANDOFF_TARGET_MODIFIED",
+        "HANDOFF_TARGET_UNSIGNED",
+        "HANDOFF_TARGET_REVOKED",
+        "HANDOFF_TARGET_POLICY_DENIED"
+      ]
+    },
+    "reason_code": { "type": "string", "minLength": 1 },
+    "allowed": { "type": "boolean" },
+    "expected_sha256": { "type": ["string", "null"] },
+    "signature_status": { "type": "string" },
+    "signer_subject": { "type": ["string", "null"] },
+    "baseline_path": { "type": "string" },
+    "baseline_hash": { "type": "string" }
+  }
+}
