@@ -54,7 +54,9 @@ Status reflects the **working tree** on device `anakin`, which is ahead of git `
 7.1 isolation object schema (`meta.v1`) GREEN (formalize to `schemas/`) · 7.2 isolation session/ledger schema GREEN (formalize) · 7.3 CAS-backed vault GREEN · 7.4 copy-to-vault GREEN · 7.5 vault copy verification GREEN · 7.6 metadata capture GREEN · 7.7 isolation receipt + hash-chained ledger GREEN · 7.8 execution-block abstraction PLANNED · 7.9 critical-file safety gate PLANNED · 7.10 restoration pipeline (`isolation_restore.ps1`) PLANNED · 7.11 restoration receipts PLANNED · 7.12 negative proofs PARTIAL (source-not-deleted, hash-equality, path-injection, reparse, source-changed-during-copy all covered; corrupt-vault-copy-rejected and unauthorized-restore-denied PLANNED). Proven via host-slice: `HOST_SLICE_TEST_OK`.
 **Required token when complete:** `CLARITY_TIER1_STEP7_OK`.
 
-## WBS 8 — Real handoff / boot-target verification — PLANNED (≈10%)
+## WBS 8 — Real handoff / boot-target verification — GREEN core (≈65%) — Step 8 done 2026-08-27
+
+**Update:** 8.2 hash boot target, 8.3 signature verification (host Authenticode), 8.4 expected-signer policy, 8.5 baseline identity, 8.8 boot-decision artifact (`clarity.handoff_target.v1`) and 8.9 fail-closed are GREEN, with the full verdict family VALID/MODIFIED/UNKNOWN/UNSIGNED/REVOKED/POLICY_DENIED and a no-mutation invariant. Wired into `validator_run` (runs after preflight, before scan), the gate (force-deny on non-VALID) and the seal. Proven by `CLARITY_TIER2_STEP8_OK` and `CLARITY_TIER2_STEP8_WIRED_OK`. Remaining: 8.1 identify the *real* host boot target (EFI/BCD discovery), 8.6 Secure Boot correlation, 8.7 measured-boot correlation. Original breakdown below.
 
 8.1 identify boot target · 8.2 hash boot target · 8.3 signature verification · 8.4 expected-signer policy · 8.5 baseline identity · 8.6 Secure Boot correlation · 8.7 measured-boot correlation · 8.8 boot-decision artifact · 8.9 fail-closed implementation. **Not started.** The current handoff gate reasons over trust tier + scan/isolation counts, not a real boot target; the `HANDOFF_TARGET_*` reason-code family is reserved and unused.
 
@@ -86,8 +88,8 @@ Small trusted UEFI launcher → verify validator image → launch protected seco
 [DONE 2026-08-27] STEP 6+  Scanner depth: clarity_rules.json + baseline + full taxonomy   -> SCANNER_BASELINE_TEST_OK
 [DONE 2026-08-27] STEP 7   Isolation restore + execution-block + critical-file gate        -> CLARITY_TIER1_STEP7_OK / _STEP7B_OK
 [DONE 2026-08-27] STEP 9.1 Sign/seal the validator-run bundle                              -> CLARITY_TIER1_STEP9_OK
-STEP 8   Real boot/handoff-target verifier (Action 2)   <-- NEXT
-STEP 10  Protected result screen
+[DONE 2026-08-27] STEP 8   Real boot/handoff-target verifier (Action 2) + wired into run -> CLARITY_TIER2_STEP8_OK / _WIRED_OK
+STEP 10  Protected result screen   <-- NEXT
 STEP 11  Real Hyper-V disposable review VM (WBS 5.7-5.14)
 STEP 12  Bootable validator (Mode B)
 STEP 13  UEFI launcher prototype (Mode A)

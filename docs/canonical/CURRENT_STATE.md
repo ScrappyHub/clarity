@@ -1,6 +1,6 @@
 # Clarity — Current State Audit
 
-> **Update 2026-08-27.** Steps 6, 7, and 9.1 from the frozen sequence are now built, tested, and committed on branch `feat/validator-step6-7-9` (proven by `SCANNER_BASELINE_TEST_OK`, `CLARITY_TIER1_STEP7_OK`, `CLARITY_TIER1_STEP7B_OK`, `CLARITY_TIER1_STEP9_OK`, regression-clean `HOST_SLICE_TEST_OK`). The scanner now consumes `clarity_rules.json` + a baseline registry with a full classification taxonomy; isolation gained an authorized restore pipeline, an execution-block, and a critical-file safety gate; and validator runs can now be Ed25519-sealed and verified. The sections below are the original 2026-08-20 audit; the estimates in §3, the divergences in §4, and invariant I4 in §5 are annotated inline where this update changes them.
+> **Update 2026-08-27.** Steps 6, 7, and 9.1 from the frozen sequence are now built, tested, and committed on branch `feat/validator-step6-7-9` (proven by `SCANNER_BASELINE_TEST_OK`, `CLARITY_TIER1_STEP7_OK`, `CLARITY_TIER1_STEP7B_OK`, `CLARITY_TIER1_STEP9_OK`, regression-clean `HOST_SLICE_TEST_OK`). The scanner now consumes `clarity_rules.json` + a baseline registry with a full classification taxonomy; isolation gained an authorized restore pipeline, an execution-block, and a critical-file safety gate; and validator runs can now be Ed25519-sealed and verified. The sections below are the original 2026-08-20 audit; the estimates in §3, the divergences in §4, and invariant I4 in §5 are annotated inline where this update changes them. **Step 8 (Action 2 — boot/handoff-target verification) has since been implemented and wired into the composed run** (`CLARITY_TIER2_STEP8_OK`, `CLARITY_TIER2_STEP8_WIRED_OK`): the run optionally verifies the boot target after preflight and before scan, the gate force-denies a non-VALID target, and the sealed bundle covers it.
 
 Audit date: 2026-08-20
 Repository: `C:\dev\clarity` (public: `ScrappyHub/clarity`)
@@ -77,7 +77,7 @@ The handoff document's percentages predate the uncommitted work. Grounded re-est
 | Isolation vault | 10–20% | **~85%** (was 65%) | Copy/CAS/chained-ledger/safety-gates **plus** authorized restore + execution-block + critical-file gate done (Step 7) |
 | Composed run + verify | (not listed) | **~90%** (was 80%) | Full chain + tamper-checking verifier + Ed25519 sealed/signed bundle (Step 9.1) |
 | VM profile/snapshot compat | (not listed) | **70%** | Engine + negative tests done; no live VM |
-| Actual boot-target verification | 10–15% | 10% | Gate consumes trust tier + scan, not a real boot target |
+| Actual boot-target verification | 10–15% | **~65%** (was 10%) | Verifier + 6-verdict family implemented, wired into the run and seal (Step 8). Still host-observed Authenticode + baseline, not measured boot |
 | Bootable validator | <10% | <10% | Not started |
 | Firmware-grade validator | <10% | <10% | Not started |
 
@@ -93,7 +93,7 @@ Overall hosted-shell milestone: the handoff doc's "~70–75%" is now conservativ
 
 3. ~~**No isolation restore or execution-block.**~~ **[RESOLVED 2026-08-27, Step 7.]** `isolation_restore.ps1` performs authorized, hash-verified restore with a boot-critical safety gate and a hash-chained restore ledger (evidence preserved, copy-not-move); `isolation_block.ps1` provides ReportOnly/Marker/critical-logical execution-block with a non-destructive sidecar marker.
 
-4. **Handoff gate is not a boot-target verifier.** Action 2 ("verify the object about to receive execution") is not implemented against a real EFI/boot-manager/kernel target. The gate reasons over trust tier + scan/isolation counts only. The `HANDOFF_TARGET_*` reason-code family is designed but unused.
+4. ~~**Handoff gate is not a boot-target verifier.**~~ **[RESOLVED 2026-08-27, Step 8.]** `validator_handoff_target.ps1` verifies the execution target without mutating it and emits the full `HANDOFF_TARGET_*` verdict family against a baseline + Authenticode; `validator_run` runs it between preflight and scan, `validator_handoff_gate` force-denies a non-VALID target, and `validator_seal` covers it. Remaining: identifying the *real* host boot target (EFI/BCD discovery) and Secure Boot / measured-boot correlation.
 
 5. **Canonical docs referenced by `AGENTS.md` are missing.** `AGENTS.md`/`CLAUDE.md` instruct readers to consult `docs/canonical/IDENTITY.md`, `SPEC.md`, and `CURRENT_STATE.md` "when present" — none existed before this audit. (This document, plus the new `SPEC.md`, `WBS.md`, and `DEFINITION_OF_DONE.md`, begin closing that gap.)
 
@@ -136,4 +136,4 @@ The primary near-term risk identified in this audit — roughly a dozen substant
 
 ## 8. Next implementation boundary
 
-Consistent with the spec's frozen sequence, items (a) scanner depth, (b) isolation restore + execution-block + critical-file gate, and (c) run signing are **done (Steps 6, 7, 9.1, 2026-08-27)**. The next green-able work is **Action 2 — real boot/handoff-target verification (Step 8)** and the **protected result screen (Step 10)**. Real host boot-target verification (Tier-2) follows. Firmware/UEFI remains last and must reproduce, not redefine, the reference semantics proven here.
+Consistent with the spec's frozen sequence, items (a) scanner depth, (b) isolation restore + execution-block + critical-file gate, and (c) run signing are **done (Steps 6, 7, 9.1, 2026-08-27)**. Item (d) Action 2 boot/handoff-target verification is also **done (Step 8)** and wired into the run. The next green-able work is the **protected result screen (Step 10)**, then real host boot-target discovery and Secure Boot/measured-boot correlation (Tier-2). Real host boot-target verification (Tier-2) follows. Firmware/UEFI remains last and must reproduce, not redefine, the reference semantics proven here.
