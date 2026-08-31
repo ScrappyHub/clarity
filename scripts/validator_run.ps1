@@ -6,7 +6,9 @@ param(
   [Parameter(Mandatory=$true)][string]$ProducerInstance,
   [Parameter(Mandatory=$false)][string[]]$TargetRoots,
   [Parameter(Mandatory=$false)][int]$MaxFiles = 5000,
-  [Parameter(Mandatory=$false)][switch]$AllowDegraded
+  [Parameter(Mandatory=$false)][switch]$AllowDegraded,
+  [Parameter(Mandatory=$false)][string]$HandoffTargetPath = "",
+  [Parameter(Mandatory=$false)][string]$HandoffBaselinePath = ""
 )
 
 Set-StrictMode -Version Latest
@@ -39,6 +41,13 @@ $preflightPath = Invoke-PathOutput (Join-Path $PSScriptRoot "validator_preflight
   RuntimeRoot=$RuntimeRoot; RepoRoot=$RepoRoot; Tenant=$Tenant; Principal=$Principal; ProducerInstance=$ProducerInstance
 } "*.preflight.json"
 
+$htReportPath = ""
+if($HandoffTargetPath -and $HandoffBaselinePath){
+  $htReportPath = Invoke-PathOutput (Join-Path $PSScriptRoot "validator_handoff_target.ps1") @{
+    RepoRoot=$RepoRoot; TargetPath=$HandoffTargetPath; BaselinePath=$HandoffBaselinePath
+  } "*.handoff_target.json"
+}
+
 $scanArgs = @{ RepoRoot=$RepoRoot; MaxFiles=$MaxFiles }
 if($TargetRoots -and $TargetRoots.Count -gt 0){ $scanArgs["TargetRoots"] = $TargetRoots }
 $scanPath = Invoke-PathOutput (Join-Path $PSScriptRoot "validator_scan_targeted.ps1") $scanArgs "*.scan.json"
@@ -49,12 +58,15 @@ $isolationPath = Invoke-PathOutput (Join-Path $PSScriptRoot "validator_isolate_c
 
 $gateArgs = @{ RepoRoot=$RepoRoot; PreflightPath=$preflightPath; ScanPath=$scanPath; IsolationPath=$isolationPath }
 if($AllowDegraded.IsPresent){ $gateArgs["AllowDegraded"] = $true }
+if($htReportPath){ $gateArgs["HandoffTargetPath"] = $htReportPath }
 $handoffPath = Invoke-PathOutput (Join-Path $PSScriptRoot "validator_handoff_gate.ps1") $gateArgs "*.handoff.json"
 
 $preflight = Get-Content -Raw -LiteralPath $preflightPath -Encoding UTF8 | ConvertFrom-Json
 $scan = Get-Content -Raw -LiteralPath $scanPath -Encoding UTF8 | ConvertFrom-Json
 $isolation = Get-Content -Raw -LiteralPath $isolationPath -Encoding UTF8 | ConvertFrom-Json
 $handoff = Get-Content -Raw -LiteralPath $handoffPath -Encoding UTF8 | ConvertFrom-Json
+$handoffTarget = $null
+if($htReportPath){ $handoffTarget = Get-Content -Raw -LiteralPath $htReportPath -Encoding UTF8 | ConvertFrom-Json }
 
 $obj = [ordered]@{
   schema = "clarity.validator_run.v1"
@@ -78,6 +90,9 @@ $obj = [ordered]@{
   }
 }
 
+if($htReportPath){
+  $obj.phases["handoff_target"] = [ordered]@{ path=$htReportPath; sha256=(Sha256HexFile $htReportPath); run_id=[string]$handoffTarget.run_id; verdict=[string]$handoffTarget.verdict; allowed=[bool]$handoffTarget.allowed }
+}
 WriteUtf8NoBomLf $runPath (($obj | ConvertTo-Json -Compress -Depth 10))
 Write-Host ("VALIDATOR_RUN_OK: " + $runPath) -ForegroundColor Green
 Write-Output $runPath

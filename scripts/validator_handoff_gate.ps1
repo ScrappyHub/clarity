@@ -3,6 +3,7 @@ param(
   [Parameter(Mandatory=$true)][string]$PreflightPath,
   [Parameter(Mandatory=$false)][string]$ScanPath = "",
   [Parameter(Mandatory=$false)][string]$IsolationPath = "",
+  [Parameter(Mandatory=$false)][string]$HandoffTargetPath = "",
   [switch]$AllowDegraded
 )
 
@@ -57,6 +58,18 @@ if($scan){
   elseif([int]$isolation.isolated_count -ne 0){ $decision = "deny"; $allowed = $false; $reason = "UNEXPECTED_ISOLATION_COUNT" }
 }
 
+$targetVerdict = $null
+$targetAllowed = $null
+$targetRunId = $null
+if($HandoffTargetPath){
+  if(-not (Test-Path -LiteralPath $HandoffTargetPath -PathType Leaf)){ throw ("MISSING_HANDOFF_TARGET: " + $HandoffTargetPath) }
+  $ht = Get-Content -Raw -LiteralPath $HandoffTargetPath -Encoding UTF8 | ConvertFrom-Json
+  $targetVerdict = [string]$ht.verdict
+  $targetAllowed = [bool]$ht.allowed
+  $targetRunId = [string]$ht.run_id
+  if(-not $targetAllowed){ $decision = "deny"; $allowed = $false; $reason = $targetVerdict }
+}
+
 $obj = [ordered]@{
   schema = "clarity.validator_handoff_decision.v1"
   created_at_utc = UtcNow
@@ -73,6 +86,10 @@ $obj = [ordered]@{
   isolation_path = if($isolation){ $IsolationPath } else { $null }
   isolation_run_id = if($isolation){ [string]$isolation.run_id } else { $null }
   isolated_count = if($isolation){ [int]$isolation.isolated_count } else { $null }
+  handoff_target_path = if($HandoffTargetPath){ $HandoffTargetPath } else { $null }
+  handoff_target_run_id = $targetRunId
+  handoff_target_verdict = $targetVerdict
+  handoff_target_allowed = $targetAllowed
 }
 
 $json = ($obj | ConvertTo-Json -Compress -Depth 6)

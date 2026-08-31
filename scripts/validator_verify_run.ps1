@@ -23,6 +23,9 @@ Assert-Hash ([string]$p.scan.findings_path) ([string]$p.scan.findings_sha256) "f
 Assert-Hash ([string]$p.isolation.path) ([string]$p.isolation.sha256) "isolation"
 Assert-Hash ([string]$p.isolation.ledger_path) ([string]$p.isolation.ledger_sha256) "isolation_ledger"
 Assert-Hash ([string]$p.handoff.path) ([string]$p.handoff.sha256) "handoff"
+if($p.PSObject.Properties.Name -contains "handoff_target"){
+  Assert-Hash ([string]$p.handoff_target.path) ([string]$p.handoff_target.sha256) "handoff_target"
+}
 
 $scan = Get-Content -Raw -LiteralPath ([string]$p.scan.path) -Encoding UTF8 | ConvertFrom-Json
 $preflight = Get-Content -Raw -LiteralPath ([string]$p.preflight.path) -Encoding UTF8 | ConvertFrom-Json
@@ -39,6 +42,12 @@ if([bool]$handoff.allowed -ne [bool]$p.handoff.allowed){ throw "HANDOFF_ALLOWED_
 if([string]$run.decision.trust_tier -ne [string]$preflight.trust_tier){ throw "RUN_DECISION_TRUST_MISMATCH" }
 if([string]$run.decision.handoff -ne [string]$handoff.decision){ throw "RUN_DECISION_HANDOFF_MISMATCH" }
 if([bool]$run.decision.allowed -ne [bool]$handoff.allowed){ throw "RUN_DECISION_ALLOWED_MISMATCH" }
+if($p.PSObject.Properties.Name -contains "handoff_target"){
+  $htv = Get-Content -Raw -LiteralPath ([string]$p.handoff_target.path) -Encoding UTF8 | ConvertFrom-Json
+  if([string]$htv.verdict -ne [string]$p.handoff_target.verdict){ throw "HANDOFF_TARGET_VERDICT_MISMATCH" }
+  if([bool]$htv.allowed -ne [bool]$p.handoff_target.allowed){ throw "HANDOFF_TARGET_ALLOWED_MISMATCH" }
+  if((-not [bool]$htv.allowed) -and [bool]$run.decision.allowed){ throw "HANDOFF_TARGET_DENY_NOT_ENFORCED" }
+}
 
 Write-Host ("VALIDATOR_RUN_VERIFY_OK: " + $RunPath) -ForegroundColor Green
 Write-Output $RunPath

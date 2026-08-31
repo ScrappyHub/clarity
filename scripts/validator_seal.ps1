@@ -33,6 +33,9 @@ $items = @(
   [ordered]@{ name = "isolation_ledger.ndjson";  src = [string]$p.isolation.ledger_path;      expect = [string]$p.isolation.ledger_sha256 },
   [ordered]@{ name = "handoff_decision.json";    src = [string]$p.handoff.path;               expect = [string]$p.handoff.sha256 }
 )
+if($p.PSObject.Properties.Name -contains "handoff_target"){
+  $items += ,([ordered]@{ name = "handoff_target.json"; src = [string]$p.handoff_target.path; expect = [string]$p.handoff_target.sha256 })
+}
 
 $sealDir = Join-Path $RepoRoot ("reports\validator_seals\" + [string]$run.run_id)
 EnsureDir $sealDir
