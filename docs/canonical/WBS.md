@@ -64,9 +64,12 @@ Status reflects the **working tree** on device `anakin`, which is ahead of git `
 
 9.0 composed run `validator_run.ps1` GREEN · 9.0v run verifier `validator_verify_run.ps1` GREEN (hash + cross-phase consistency + tamper detection) · 9.1 **run-level Ed25519 signing / sealed bundle GREEN (Step 9.1, 2026-08-27)** — `validator_seal.ps1` + `validator_verify_seal.ps1` produce a portable `reports/validator_seals/<run_id>/` bundle (`report.json` + phase copies + `sha256sums.txt` + `signature.sig` + `seal.json`) and verify hashes + Ed25519 signature against `allowed_signers`; proven by `CLARITY_TIER1_STEP9_OK` (positive + corrupted-artifact + wrong-signature). · 9.2 sealed-bundle layout GREEN (same deliverable). Once Action 2 (WBS 8) exists, the run inserts a `handoff_target` phase and the seal extends to cover it.
 
-## WBS 10 — Protected validator result screen — PLANNED
+## WBS 10 — Protected validator result screen — GREEN — Step 10 done 2026-08-27
 
-Turn the CLI/replay surface into a human-facing shell (STARTING → VALIDATING PLATFORM → VERIFYING BOOT TARGET → SCANNING → ISOLATING → RESULT). Every displayed number MUST derive from the sealed evidence run; the display is not decorative. **Not started.**
+**Update:** `validator_result_view.ps1` turns the CLI/replay surface into a human-facing shell (STARTING VALIDATOR -> VALIDATING PLATFORM -> VERIFYING BOOT TARGET -> SCANNING CRITICAL FILES -> ISOLATING SUSPICIOUS CONTENT -> RESULT). Every displayed number is read from a sealed `reports/validator_seals/<run_id>/` bundle, never recomputed or assumed: the script re-hashes every file in `sha256sums.txt` against the manifest **before** rendering anything and throws `SEAL_INTEGRITY_FAILED` on any mismatch or missing file, and can additionally verify the Ed25519 seal signature (via `validator_verify_seal.ps1`) and report its state in the header. Optional HTML export mirrors the text report with dark styling. Proven by `CLARITY_TIER1_STEP10_OK`: a fixture run with a real suspicious finding, a valid boot target, and a denied decision renders correctly end-to-end, and a post-hoc corruption of `report.json` inside the sealed directory is refused rather than displayed.
+
+10.1 lifecycle text rendering GREEN · 10.2 PLATFORM/BOOT TARGET/SCAN/ISOLATION/DECISION sections GREEN · 10.3 pre-display integrity re-verification (hash) GREEN · 10.4 pre-display signature verification GREEN (optional, via `-Principal`) · 10.5 tamper-refusal negative proof GREEN · 10.6 HTML export GREEN. Remaining: this is a CLI/file-based result screen, not yet surfaced through a live protected-display session (WBS 2) or a GUI.
+**Required token when complete:** `CLARITY_TIER1_STEP10_OK` — met.
 
 ## WBS 11 — Bootable external validator (Mode B) — PLANNED (<10%)
 
@@ -89,10 +92,10 @@ Small trusted UEFI launcher → verify validator image → launch protected seco
 [DONE 2026-08-27] STEP 7   Isolation restore + execution-block + critical-file gate        -> CLARITY_TIER1_STEP7_OK / _STEP7B_OK
 [DONE 2026-08-27] STEP 9.1 Sign/seal the validator-run bundle                              -> CLARITY_TIER1_STEP9_OK
 [DONE 2026-08-27] STEP 8   Real boot/handoff-target verifier (Action 2) + wired into run -> CLARITY_TIER2_STEP8_OK / _WIRED_OK
-STEP 10  Protected result screen   <-- NEXT
-STEP 11  Real Hyper-V disposable review VM (WBS 5.7-5.14)
+[DONE 2026-08-27] STEP 10  Protected result screen (strictly from sealed evidence)        -> CLARITY_TIER1_STEP10_OK
+STEP 11  Real Hyper-V disposable review VM (WBS 5.7-5.14)   <-- NEXT
 STEP 12  Bootable validator (Mode B)
 STEP 13  UEFI launcher prototype (Mode A)
 ```
 
-Governance note (WBS 13.1): **RESOLVED** — the validator-shell layer is committed (`feat/validator-shell-milestone`, pushed) and Steps 6/7/9.1 are committed (`feat/validator-step6-7-9`). Remaining housekeeping: merge both branches to `main` and push `feat/validator-step6-7-9`.
+Governance note (WBS 13.1): **RESOLVED** — the validator-shell layer is committed (`feat/validator-shell-milestone`, pushed) and Steps 6/7/9.1/8/10 are committed, with `feat/validator-step6-7-9` pushed through the Step 8 wiring (Step 10's commit is pending push). Remaining housekeeping: merge both branches to `main` and push the latest `feat/validator-step6-7-9` commits.

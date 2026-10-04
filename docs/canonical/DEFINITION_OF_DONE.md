@@ -28,7 +28,7 @@ Proof: `CLARITY_TIER0_STEP2_OK`, `CLARITY_TIER0_STEP3_OK`. **Status: met.**
 
 ---
 
-## Tier-1 — Hosted validator shell — **~90%, NEARLY DONE** (updated 2026-08-27)
+## Tier-1 — Hosted validator shell — **~95%, NEARLY DONE** (updated 2026-08-27)
 
 Required and their status:
 
@@ -46,10 +46,10 @@ Required and their status:
 | Isolation restore + execution-block + critical-file safety gate | **DONE (Step 7, 2026-08-27)** |
 | Sealed (signed) validator-run bundle | **DONE (Step 9.1, 2026-08-27)** |
 | Negative tests: changed-hash, missing-critical, corrupt-vault-object, unauthorized-restore, wrong-signature | **DONE** |
-| Final human-readable validator summary screen | NOT DONE (Step 10) |
+| Final human-readable validator summary screen | **DONE (Step 10, 2026-08-27)** |
 | Per-file signature/signer validation in scanner | NOT DONE |
 
-Tier-1's three former blockers (scanner depth, isolation restore/exec-block, run signing) are now closed and proven (`SCANNER_BASELINE_TEST_OK`, `CLARITY_TIER1_STEP7_OK`, `CLARITY_TIER1_STEP7B_OK`, `CLARITY_TIER1_STEP9_OK`). The remaining Tier-1 gap is the **protected result screen (Step 10)** and per-file signature validation. Real boot-target verification (Step 8) belongs to Tier-2.
+Tier-1's former blockers (scanner depth, isolation restore/exec-block, run signing, and the protected result screen) are now closed and proven (`SCANNER_BASELINE_TEST_OK`, `CLARITY_TIER1_STEP7_OK`, `CLARITY_TIER1_STEP7B_OK`, `CLARITY_TIER1_STEP9_OK`, `CLARITY_TIER1_STEP10_OK`). The one remaining named Tier-1 gap is **per-file signature/signer validation in the scanner**. Real boot-target verification (Step 8) belongs to Tier-2.
 
 ---
 
