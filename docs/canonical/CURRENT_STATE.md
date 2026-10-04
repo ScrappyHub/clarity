@@ -74,7 +74,7 @@ The handoff document's percentages predate the uncommitted work. Grounded re-est
 | Validator preflight | 70% | 85% | Capability probe + assurance cap + tests done |
 | Sandbox abstraction | 75% | 75% | Request-level; no live guest |
 | Hyper-V abstraction | 55% | 60% | + profile/snapshot compatibility engine |
-| Targeted scan | 10–20% | **~70%** (was 45%) | Rules + baseline + verified/unknown/suspicious/compromised taxonomy done (Step 6). No per-file signer/signature check yet |
+| Targeted scan | 10–20% | **~90%** (was 70%) | Rules + baseline + full taxonomy (Step 6) plus per-file signer/signature validation for opted-in baseline entries — closes the last named Tier-1 gap |
 | Isolation vault | 10–20% | **~85%** (was 65%) | Copy/CAS/chained-ledger/safety-gates **plus** authorized restore + execution-block + critical-file gate done (Step 7) |
 | Composed run + verify | (not listed) | **~90%** (was 80%) | Full chain + tamper-checking verifier + Ed25519 sealed/signed bundle (Step 9.1) |
 | VM profile/snapshot compat | (not listed) | **70%** | Engine + negative tests done; no live VM |
@@ -83,13 +83,13 @@ The handoff document's percentages predate the uncommitted work. Grounded re-est
 | Bootable validator | <10% | <10% | Not started |
 | Firmware-grade validator | <10% | <10% | Not started |
 
-Overall hosted-shell milestone: the handoff doc's "~70–75%" is now conservatively **~85%**. The remaining shell gap is per-file signature/signer validation in the scanner; the remaining milestone gap beyond the shell is real boot-target discovery and Secure Boot/measured-boot correlation (Tier-2).
+Overall hosted-shell milestone: the handoff doc's "~70–75%" is now conservatively **~90%**. Tier-1 (the hosted shell) has no further named gap; the remaining milestone gap is real boot-target discovery and Secure Boot/measured-boot correlation (Tier-2).
 
 ---
 
 ## 4. Divergences and defects worth flagging
 
-1. ~~**`clarity_rules.json` is defined but unused by the scanner.**~~ **[RESOLVED 2026-08-27, Step 6.]** `validator_scan_targeted.ps1` now consumes the rules file's suspicion heuristics (zero-length exe, double-extension, startup/temp executable) and an optional `clarity.baseline.v1` registry, and classifies each file verified/unknown/suspicious/compromised. Remaining scanner gap: per-file signature/signer validation.
+1. ~~**`clarity_rules.json` is defined but unused by the scanner.**~~ **[RESOLVED 2026-08-27, Step 6.]** `validator_scan_targeted.ps1` now consumes the rules file's suspicion heuristics (zero-length exe, double-extension, startup/temp executable) and an optional `clarity.baseline.v1` registry, and classifies each file verified/unknown/suspicious/compromised. **Per-file signer/signature validation is also now closed** (`CLARITY_TIER1_SCANNER_SIGNER_OK`): a baseline entry can require a Valid Authenticode signature and/or a specific signer subject, and a hash-matched file failing either check is reclassified `compromised` (`FILE_SIGNATURE_NOT_VALID` / `FILE_SIGNER_UNTRUSTED`). No named scanner gap remains for Tier-1.
 
 2. ~~**Validator runs are hash-bound but not signed.**~~ **[RESOLVED 2026-08-27, Step 9.1.]** `validator_seal.ps1` gathers a run into a portable bundle and Ed25519-signs its `sha256sums.txt` (namespace `clarity.validator_run.v1`, same mechanism as Option A packets); `validator_verify_seal.ps1` verifies hashes + signature against `allowed_signers`. Runs now carry *origin authenticity*, not just internal integrity.
 
@@ -132,10 +132,10 @@ Clarity does **not** run in BIOS/firmware; does **not** verify a real boot targe
 
 ## 7. Governance & immediate risk
 
-The primary near-term risk identified in this audit — roughly a dozen substantive, tested validator scripts and schemas sitting **uncommitted** — is **[RESOLVED 2026-08-27].** The validator-shell layer was committed and pushed as branch `feat/validator-shell-milestone` (5 commits), and Steps 6/7/9.1 as branch `feat/validator-step6-7-9` (3 commits). Debris remains gitignored (not tracked). `feat/validator-step6-7-9` has since been pushed, and Step 8's wiring and Step 10 (the result screen) are additional commits on it. Neither branch is merged to `main` yet — merging both branches is the remaining housekeeping. The stale `.git/index.lock` recurs between runs and is cleared automatically by the commit scripts.
+The primary near-term risk identified in this audit — roughly a dozen substantive, tested validator scripts and schemas sitting **uncommitted** — is **[RESOLVED 2026-08-27].** The validator-shell layer was committed and pushed as branch `feat/validator-shell-milestone` (5 commits), and Steps 6/7/9.1 as branch `feat/validator-step6-7-9` (3 commits). Debris remains gitignored (not tracked). `feat/validator-step6-7-9` has been pushed through the Step 10 docs-sync commit; the per-file scanner signer/signature commit is a further, not-yet-pushed commit on the same branch. Neither branch is merged to `main` yet — merging both branches is the remaining housekeeping. The stale `.git/index.lock` recurs between runs and is cleared automatically by the commit scripts.
 
 ---
 
 ## 8. Next implementation boundary
 
-Consistent with the spec's frozen sequence, items (a) scanner depth, (b) isolation restore + execution-block + critical-file gate, and (c) run signing are **done (Steps 6, 7, 9.1, 2026-08-27)**. Item (d) Action 2 boot/handoff-target verification is also **done (Step 8)** and wired into the run. Item (e) the **protected result screen is also done (Step 10)**. The next green-able work is real host boot-target discovery and Secure Boot/measured-boot correlation (Tier-2), or a real disposable Hyper-V review VM (Step 11). Firmware/UEFI remains last and must reproduce, not redefine, the reference semantics proven here.
+Consistent with the spec's frozen sequence, items (a) scanner depth, (b) isolation restore + execution-block + critical-file gate, and (c) run signing are **done (Steps 6, 7, 9.1, 2026-08-27)**. Item (d) Action 2 boot/handoff-target verification is also **done (Step 8)** and wired into the run. Item (e) the **protected result screen is also done (Step 10)**, and item (f) **per-file signer/signature validation in the scanner is done**, closing the last named Tier-1 gap. The next green-able work is real host boot-target discovery and Secure Boot/measured-boot correlation (Tier-2), or a real disposable Hyper-V review VM (Step 11). Firmware/UEFI remains last and must reproduce, not redefine, the reference semantics proven here.
