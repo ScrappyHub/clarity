@@ -79,6 +79,7 @@ $unknownCount = 0
 $suspiciousCount = 0
 $compromisedCount = 0
 $examinedFiles = 0
+$signatureChecks = 0
 $scanErrors = @()
 $seenBaselinePaths = New-Object System.Collections.Generic.HashSet[string]
 
@@ -91,6 +92,22 @@ function Get-SuspicionReason([System.IO.FileInfo]$fi){
   if($doubleExtRegex -and ($name -match $doubleExtRegex)){ return "DOUBLE_EXTENSION" }
   if(($ext -in ".exe",".dll",".sys") -and ($fi.Length -eq 0)){ return "ZERO_LENGTH_EXECUTABLE" }
   return $null
+}
+
+# Per-file signer/signature validation (host-observed Authenticode; same
+# pattern as validator_handoff_target.ps1). Only invoked for baseline
+# entries that opt in via require_signed / signer, so a byte-identical
+# file can still be rejected when its signature is invalid or untrusted
+# (e.g. a revoked certificate), even though the hash matches the baseline.
+function Get-FileSignatureInfo([string]$Path){
+  $status = "unknown"
+  $signer = $null
+  try {
+    $sig = Get-AuthenticodeSignature -LiteralPath $Path -ErrorAction Stop
+    $status = [string]$sig.Status
+    if($null -ne $sig.SignerCertificate){ $signer = [string]$sig.SignerCertificate.Subject }
+  } catch { $status = "unavailable" }
+  return [pscustomobject]@{ Status = $status; Signer = $signer }
 }
 
 foreach($t in $TargetRoots){
@@ -115,9 +132,7 @@ foreach($t in $TargetRoots){
         $e = $baselineByPath[$key]
         $h = Sha256HexFile $full
         $expected = ([string]$e.sha256).ToLowerInvariant()
-        if($h -eq $expected){
-          $verifiedCount++
-        } else {
+        if($h -ne $expected){
           $compromisedCount++
           $findings.Add([ordered]@{
             schema = "clarity.validator_finding.v1"
@@ -128,7 +143,46 @@ foreach($t in $TargetRoots){
             sha256 = $h
             baseline_sha256 = $expected
           })
+          return
         }
+
+        $requireSigned = (HasProp $e "require_signed") -and [bool]$e.require_signed
+        $expectedSigner = if(HasProp $e "signer"){ [string]$e.signer } else { "" }
+        if($requireSigned -or $expectedSigner){
+          $signatureChecks++
+          $sigInfo = Get-FileSignatureInfo $full
+          if($requireSigned -and ($sigInfo.Status -ne "Valid")){
+            $compromisedCount++
+            $findings.Add([ordered]@{
+              schema = "clarity.validator_finding.v1"
+              target_path = $full
+              reason_code = "FILE_SIGNATURE_NOT_VALID"
+              severity = "critical"
+              classification = "compromised"
+              sha256 = $h
+              signature_status = $sigInfo.Status
+              signer_subject = $sigInfo.Signer
+            })
+            return
+          }
+          if($expectedSigner -and $sigInfo.Signer -and ($expectedSigner -ne $sigInfo.Signer)){
+            $compromisedCount++
+            $findings.Add([ordered]@{
+              schema = "clarity.validator_finding.v1"
+              target_path = $full
+              reason_code = "FILE_SIGNER_UNTRUSTED"
+              severity = "critical"
+              classification = "compromised"
+              sha256 = $h
+              signature_status = $sigInfo.Status
+              signer_subject = $sigInfo.Signer
+              expected_signer = $expectedSigner
+            })
+            return
+          }
+        }
+
+        $verifiedCount++
         return
       }
 
@@ -190,6 +244,7 @@ $scanObj = [ordered]@{
   }
   missing_critical_count = $missingCritical.Count
   missing_critical = @($missingCritical.ToArray())
+  signature_checks_performed = $signatureChecks
 }
 
 $scanJson = ($scanObj | ConvertTo-Json -Depth 6)

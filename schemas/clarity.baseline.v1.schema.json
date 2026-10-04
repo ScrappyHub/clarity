@@ -17,6 +17,7 @@
           "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
           "required": { "type": "boolean" },
           "signer": { "type": "string" },
+          "require_signed": { "type": "boolean" },
           "note": { "type": "string" }
         }
       }

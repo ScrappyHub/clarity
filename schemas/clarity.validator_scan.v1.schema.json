@@ -29,6 +29,7 @@
       }
     },
     "missing_critical_count": { "type": "integer", "minimum": 0 },
-    "missing_critical": { "type": "array", "items": { "type": "string" } }
+    "missing_critical": { "type": "array", "items": { "type": "string" } },
+    "signature_checks_performed": { "type": "integer", "minimum": 0 }
   }
 }
