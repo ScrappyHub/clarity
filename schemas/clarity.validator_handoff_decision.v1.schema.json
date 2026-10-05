@@ -18,6 +18,8 @@
     "isolation_path": { "type": ["string","null"] },
     "isolation_run_id": { "type": ["string","null"] },
     "isolated_count": { "type": ["integer","null"] },
+    "protected_flagged_count": { "type": ["integer","null"] },
+    "known_unchanged_suspicious_count": { "type": ["integer","null"] },
     "handoff_target_path": { "type": ["string","null"] },
     "handoff_target_run_id": { "type": ["string","null"] },
     "handoff_target_verdict": { "type": ["string","null"] },

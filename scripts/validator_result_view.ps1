@@ -112,6 +112,29 @@ if($null -ne $target){
 [void]$L.Add("ISOLATION")
 [void]$L.Add("  Isolated objects: " + $isolated)
 [void]$L.Add("")
+$cs      = if(HasProp $scan "change_summary"){ $scan.change_summary } else { $null }
+$protN   = [int](Val $scan "protected_flagged_count" 0)
+$knownN  = [int](Val $scan "known_unchanged_suspicious_count" 0)
+[void]$L.Add("CHANGES SINCE PREVIOUS SCAN")
+if($null -ne $cs -and [bool](Val $cs "compared" $false)){
+  [void]$L.Add("  New:           " + [int](Val $cs "new" 0))
+  [void]$L.Add("  Changed:       " + [int](Val $cs "changed" 0))
+  [void]$L.Add("  Unchanged:     " + [int](Val $cs "unchanged" 0))
+  [void]$L.Add("  Removed:       " + [int](Val $cs "removed" 0))
+} else {
+  [void]$L.Add("  No previous inventory supplied; change tracking not performed.")
+}
+[void]$L.Add("  Protected files flagged (reported, never isolated): " + $protN)
+[void]$L.Add("  Known unchanged files already isolated previously:  " + $knownN)
+$chg = @(Val $scan "changes" @())
+$shown = 0
+foreach($c in $chg){
+  if($shown -ge 20){ break }
+  $shown++
+  [void]$L.Add("  [" + [string]$c.state + "] " + [string]$c.disposition + "  " + [string]$c.reason_code + "  " + [string]$c.path)
+}
+if($chg.Count -gt $shown){ [void]$L.Add("  ... " + ($chg.Count - $shown) + " more in the sealed scan report") }
+[void]$L.Add("")
 [void]$L.Add("DECISION")
 [void]$L.Add("  Handoff:       " + [string](Val $decision "decision" "unknown"))
 [void]$L.Add("  Allowed:       " + [string](Val $decision "allowed" "unknown"))

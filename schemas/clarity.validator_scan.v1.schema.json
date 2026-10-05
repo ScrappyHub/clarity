@@ -30,6 +30,15 @@
     },
     "missing_critical_count": { "type": "integer", "minimum": 0 },
     "missing_critical": { "type": "array", "items": { "type": "string" } },
-    "signature_checks_performed": { "type": "integer", "minimum": 0 }
+    "signature_checks_performed": { "type": "integer", "minimum": 0 },
+    "protected_flagged_count": { "type": "integer", "minimum": 0 },
+    "protected_flagged": { "type": "array" },
+    "known_unchanged_suspicious_count": { "type": "integer", "minimum": 0 },
+    "change_summary": { "type": "object" },
+    "changes": { "type": "array" },
+    "changes_truncated": { "type": "boolean" },
+    "inventory_path": { "type": ["string", "null"] },
+    "inventory_hash": { "type": ["string", "null"] },
+    "inventory_count": { "type": "integer", "minimum": 0 }
   }
 }

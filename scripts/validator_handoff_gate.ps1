@@ -12,6 +12,7 @@ $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\lib\canon.ps1"
 
 function UtcNow(){ (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ") }
+function HasProp($obj,[string]$name){ if($null -eq $obj){ return $false }; return [bool]($obj.PSObject.Properties.Name -contains $name) }
 
 if(-not (Test-Path -LiteralPath $RepoRoot -PathType Container)){ throw ("MISSING_REPO_ROOT: " + $RepoRoot) }
 if(-not (Test-Path -LiteralPath $PreflightPath -PathType Leaf)){ throw ("MISSING_PREFLIGHT: " + $PreflightPath) }
@@ -56,6 +57,8 @@ if($scan){
   if(-not [bool]$scan.scan_complete){ $decision = "deny"; $allowed = $false; $reason = "SCAN_INCOMPLETE" }
   elseif([int]$scan.suspicious_count -gt 0){ $decision = "deny"; $allowed = $false; $reason = "SUSPICIOUS_FINDINGS_PRESENT" }
   elseif([int]$isolation.isolated_count -ne 0){ $decision = "deny"; $allowed = $false; $reason = "UNEXPECTED_ISOLATION_COUNT" }
+  elseif((HasProp $scan "protected_flagged_count") -and ([int]$scan.protected_flagged_count -gt 0)){ $decision = "deny"; $allowed = $false; $reason = "PROTECTED_FILE_FLAGGED" }
+  elseif((HasProp $scan "known_unchanged_suspicious_count") -and ([int]$scan.known_unchanged_suspicious_count -gt 0)){ $decision = "deny"; $allowed = $false; $reason = "KNOWN_SUSPICIOUS_PERSISTS" }
 }
 
 $targetVerdict = $null
@@ -86,6 +89,8 @@ $obj = [ordered]@{
   isolation_path = if($isolation){ $IsolationPath } else { $null }
   isolation_run_id = if($isolation){ [string]$isolation.run_id } else { $null }
   isolated_count = if($isolation){ [int]$isolation.isolated_count } else { $null }
+  protected_flagged_count = if($scan -and (HasProp $scan "protected_flagged_count")){ [int]$scan.protected_flagged_count } else { $null }
+  known_unchanged_suspicious_count = if($scan -and (HasProp $scan "known_unchanged_suspicious_count")){ [int]$scan.known_unchanged_suspicious_count } else { $null }
   handoff_target_path = if($HandoffTargetPath){ $HandoffTargetPath } else { $null }
   handoff_target_run_id = $targetRunId
   handoff_target_verdict = $targetVerdict

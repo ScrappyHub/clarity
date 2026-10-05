@@ -8,7 +8,11 @@ param(
   [Parameter(Mandatory=$false)][int]$MaxFiles = 5000,
   [Parameter(Mandatory=$false)][switch]$AllowDegraded,
   [Parameter(Mandatory=$false)][string]$HandoffTargetPath = "",
-  [Parameter(Mandatory=$false)][string]$HandoffBaselinePath = ""
+  [Parameter(Mandatory=$false)][string]$HandoffBaselinePath = "",
+  [Parameter(Mandatory=$false)][string]$RulesPath = "",
+  [Parameter(Mandatory=$false)][string]$BaselinePath = "",
+  [Parameter(Mandatory=$false)][switch]$EmitInventory,
+  [Parameter(Mandatory=$false)][string]$PreviousInventoryPath = ""
 )
 
 Set-StrictMode -Version Latest
@@ -50,6 +54,10 @@ if($HandoffTargetPath -and $HandoffBaselinePath){
 
 $scanArgs = @{ RepoRoot=$RepoRoot; MaxFiles=$MaxFiles }
 if($TargetRoots -and $TargetRoots.Count -gt 0){ $scanArgs["TargetRoots"] = $TargetRoots }
+if($RulesPath){ $scanArgs["RulesPath"] = $RulesPath }
+if($BaselinePath){ $scanArgs["BaselinePath"] = $BaselinePath }
+if($EmitInventory.IsPresent){ $scanArgs["EmitInventory"] = $true }
+if($PreviousInventoryPath){ $scanArgs["PreviousInventoryPath"] = $PreviousInventoryPath }
 $scanPath = Invoke-PathOutput (Join-Path $PSScriptRoot "validator_scan_targeted.ps1") $scanArgs "*.scan.json"
 
 $isolationPath = Invoke-PathOutput (Join-Path $PSScriptRoot "validator_isolate_copy.ps1") @{
@@ -90,6 +98,10 @@ $obj = [ordered]@{
   }
 }
 
+if($scan.inventory_path){
+  $obj.phases.scan["inventory_path"] = [string]$scan.inventory_path
+  $obj.phases.scan["inventory_sha256"] = (Sha256HexFile ([string]$scan.inventory_path))
+}
 if($htReportPath){
   $obj.phases["handoff_target"] = [ordered]@{ path=$htReportPath; sha256=(Sha256HexFile $htReportPath); run_id=[string]$handoffTarget.run_id; verdict=[string]$handoffTarget.verdict; allowed=[bool]$handoffTarget.allowed }
 }
