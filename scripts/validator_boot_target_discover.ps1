@@ -128,6 +128,7 @@ $bootFileFullPath = $null
 $bootFileSha256 = $null
 $handoffVerdict = $null
 $handoffReportPath = $null
+$espMountMethod = $null
 
 if($MountEspForHash){
   $espMountAttempted = $true
@@ -151,13 +152,38 @@ if($MountEspForHash){
     $mountPoint = Join-Path $env:TEMP ("clarity_esp_mount_" + $runId)
     New-Item -ItemType Directory -Force -Path $mountPoint | Out-Null
     $mounted = $false
+    $mountVia = $null        # "access_path" | "drive_letter"
+    $mountLetter = $null
+    $mountFailures = New-Object System.Collections.Generic.List[string]
     try {
-      $mvOut = & mountvol.exe $mountPoint /S
-      if($LASTEXITCODE -ne 0){ throw ("MOUNTVOL_FAILED: " + ($mvOut -join " ")) }
-      $mounted = $true
-      $espMountSucceeded = $true
+      # Method 1: add the ESP as an access path in a fresh empty folder
+      # (Storage module). Removed in finally.
+      try {
+        $espPart = $espParts[0]
+        Add-PartitionAccessPath -DiskNumber $espPart.DiskNumber -PartitionNumber $espPart.PartitionNumber `
+          -AccessPath $mountPoint -ErrorAction Stop
+        $mounted = $true; $mountVia = "access_path"
+      } catch { $mountFailures.Add("ACCESS_PATH: " + $_.Exception.Message) }
 
-      $candidate = Join-Path $mountPoint ($bootmgrPath.TrimStart('\'))
+      # Method 2 (fallback): mountvol <free drive letter>: /S
+      if(-not $mounted){
+        $used = @(Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue | ForEach-Object { $_.Name.ToUpper() })
+        $free = @([char[]]"STUVWXYZ" | Where-Object { $used -notcontains [string]$_ })
+        if($free.Count -gt 0){
+          $mountLetter = [string]$free[0]
+          $prevEapMv = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+          try { $mvOut = & mountvol.exe ($mountLetter + ":") /S 2>&1 | ForEach-Object { "$_" }; $mvCode = $LASTEXITCODE }
+          finally { $ErrorActionPreference = $prevEapMv }
+          if($mvCode -eq 0){ $mounted = $true; $mountVia = "drive_letter" }
+          else { $mountFailures.Add("MOUNTVOL: " + ($mvOut -join " ")); $mountLetter = $null }
+        } else { $mountFailures.Add("MOUNTVOL: no free drive letter") }
+      }
+      if(-not $mounted){ throw ("ESP_MOUNT_FAILED [" + ($mountFailures -join " | ") + "]") }
+      $espMountSucceeded = $true
+      $espMountMethod = $mountVia
+      $mountRoot = if($mountVia -eq "drive_letter"){ $mountLetter + ":\" } else { $mountPoint }
+
+      $candidate = Join-Path $mountRoot ($bootmgrPath.TrimStart('\'))
       if(Test-Path -LiteralPath $candidate -PathType Leaf){
         $bootFileFullPath = (Resolve-Path -LiteralPath $candidate).ProviderPath
         $bootFileSha256 = Sha256HexFile $bootFileFullPath
@@ -179,9 +205,25 @@ if($MountEspForHash){
     }
     finally {
       if($mounted){
-        try { & mountvol.exe $mountPoint /D | Out-Null } catch { $errors.Add("ESP_UNMOUNT_FAILED") }
+        try {
+          if($mountVia -eq "access_path"){
+            Remove-PartitionAccessPath -DiskNumber $espPart.DiskNumber -PartitionNumber $espPart.PartitionNumber `
+              -AccessPath $mountPoint -ErrorAction Stop
+          } else {
+            $prevEapMv = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+            try { & mountvol.exe ($mountLetter + ":") /D 2>&1 | Out-Null; $mvCode = $LASTEXITCODE }
+            finally { $ErrorActionPreference = $prevEapMv }
+            if($mvCode -ne 0){ throw "mountvol /D failed" }
+          }
+          $mounted = $false
+        } catch { $errors.Add("ESP_UNMOUNT_FAILED: " + $_.Exception.Message) }
       }
-      try { if(Test-Path -LiteralPath $mountPoint -PathType Container){ Remove-Item -LiteralPath $mountPoint -Recurse -Force -ErrorAction SilentlyContinue } } catch {}
+      # Never recurse into the mount folder: if the ESP is still attached,
+      # leave the folder alone rather than risk touching boot-partition data.
+      # Non-recursive delete only succeeds on an empty (unmounted) folder.
+      if(-not $mounted){
+        try { if(Test-Path -LiteralPath $mountPoint -PathType Container){ [System.IO.Directory]::Delete($mountPoint, $false) } } catch {}
+      }
     }
   }
 }
@@ -206,6 +248,7 @@ $obj = [ordered]@{
   esp_partition_count = $espCount
   esp_mount_attempted = $espMountAttempted
   esp_mount_succeeded = $espMountSucceeded
+  esp_mount_method = $espMountMethod
   boot_file_full_path = $bootFileFullPath
   boot_file_sha256 = $bootFileSha256
   handoff_target_verdict = $handoffVerdict
