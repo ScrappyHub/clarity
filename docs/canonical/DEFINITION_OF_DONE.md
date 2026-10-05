@@ -60,6 +60,8 @@ All named Tier-1 criteria are now closed and proven (`SCANNER_BASELINE_TEST_OK`,
 Done when Clarity, on a real host: identifies the actual boot target; validates actual boot-critical artifacts; supports a real baseline; performs real digital-signature validation; inspects Secure Boot; incorporates TPM/measured-boot evidence where supported; runs a real targeted host scan; performs real isolation; supports a controlled restricted handoff; produces a reproducible evidence run; and passes malicious/mutated test vectors.
 **Until then, Clarity is a hosted validator implementation, not a proven pre-OS security validator.** No `A3`/`A4` claim is permitted.
 
+Tier-2 progress also includes delta-aware isolation (protected files never isolated; only new/changed flagged content isolated; change view in the sealed result screen; `CLARITY_TIER2_DELTA_ISOLATION_OK`) and a Hyper-V review-VM lifecycle whose real provisioning path is written but unproven on the dev host (only refusal/deferral proven, `CLARITY_TIER2_STEP11_DEFERRED_OK`).
+
 ---
 
 ## Tier-3 — Bootable external validator (Mode B) — **NOT STARTED (<10%)**
