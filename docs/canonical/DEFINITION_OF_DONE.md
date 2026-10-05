@@ -53,9 +53,9 @@ All named Tier-1 criteria are now closed and proven (`SCANNER_BASELINE_TEST_OK`,
 
 ---
 
-## Tier-2 — Real host validator — **STARTED (~30%)** (updated 2026-08-27)
+## Tier-2 — Real host validator — **STARTED (~35%)** (updated 2026-08-27)
 
-**Progress:** boot/handoff-target verification exists and is wired into the composed run, gate and seal (Step 8): the target is hashed and checked against a baseline + Authenticode without mutation, yielding the canonical verdict family, and a non-VALID target force-denies handoff. What remains for Tier-2 is everything that makes it *real on this host*: discovering the actual boot target, Secure Boot inspection, TPM/measured-boot evidence, and malicious/mutated test vectors.
+**Progress:** boot/handoff-target verification exists and is wired into the composed run, gate and seal (Step 8): the target is hashed and checked against a baseline + Authenticode without mutation, yielding the canonical verdict family, and a non-VALID target force-denies handoff. Host boot-target discovery now exists (`validator_boot_target_discover.ps1`; firmware type and Secure Boot state proven unelevated, BCD path/ESP hash require Administrator and are not yet exercised on the dev host). What remains for Tier-2: running the elevated discovery path, wiring it into the run, a real boot-file baseline, TPM/measured-boot evidence, and malicious/mutated test vectors.
 
 Done when Clarity, on a real host: identifies the actual boot target; validates actual boot-critical artifacts; supports a real baseline; performs real digital-signature validation; inspects Secure Boot; incorporates TPM/measured-boot evidence where supported; runs a real targeted host scan; performs real isolation; supports a controlled restricted handoff; produces a reproducible evidence run; and passes malicious/mutated test vectors.
 **Until then, Clarity is a hosted validator implementation, not a proven pre-OS security validator.** No `A3`/`A4` claim is permitted.

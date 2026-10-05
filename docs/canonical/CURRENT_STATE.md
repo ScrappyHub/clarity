@@ -79,7 +79,7 @@ The handoff document's percentages predate the uncommitted work. Grounded re-est
 | Composed run + verify | (not listed) | **~90%** (was 80%) | Full chain + tamper-checking verifier + Ed25519 sealed/signed bundle (Step 9.1) |
 | VM profile/snapshot compat | (not listed) | **70%** | Engine + negative tests done; no live VM |
 | Protected result screen | (not listed) | **100%** (Step 10) | `validator_result_view.ps1` renders strictly from a hash-and-signature-verified sealed bundle; refuses to render tampered evidence |
-| Actual boot-target verification | 10–15% | **~65%** (was 10%) | Verifier + 6-verdict family implemented, wired into the run and seal (Step 8). Still host-observed Authenticode + baseline, not measured boot |
+| Actual boot-target verification | 10–15% | **~70%** (was 65%) | Verifier + 6-verdict family wired into the run and seal (Step 8); host boot-target discovery added (unelevated proven, elevated ESP-hash path unexercised). Still host-observed Authenticode + baseline, not measured boot |
 | Bootable validator | <10% | <10% | Not started |
 | Firmware-grade validator | <10% | <10% | Not started |
 
@@ -95,7 +95,7 @@ Overall hosted-shell milestone: the handoff doc's "~70–75%" is now conservativ
 
 3. ~~**No isolation restore or execution-block.**~~ **[RESOLVED 2026-08-27, Step 7.]** `isolation_restore.ps1` performs authorized, hash-verified restore with a boot-critical safety gate and a hash-chained restore ledger (evidence preserved, copy-not-move); `isolation_block.ps1` provides ReportOnly/Marker/critical-logical execution-block with a non-destructive sidecar marker.
 
-4. ~~**Handoff gate is not a boot-target verifier.**~~ **[RESOLVED 2026-08-27, Step 8.]** `validator_handoff_target.ps1` verifies the execution target without mutating it and emits the full `HANDOFF_TARGET_*` verdict family against a baseline + Authenticode; `validator_run` runs it between preflight and scan, `validator_handoff_gate` force-denies a non-VALID target, and `validator_seal` covers it. Remaining: identifying the *real* host boot target (EFI/BCD discovery) and Secure Boot / measured-boot correlation.
+4. ~~**Handoff gate is not a boot-target verifier.**~~ **[RESOLVED 2026-08-27, Step 8.]** `validator_handoff_target.ps1` verifies the execution target without mutating it and emits the full `HANDOFF_TARGET_*` verdict family against a baseline + Authenticode; `validator_run` runs it between preflight and scan, `validator_handoff_gate` force-denies a non-VALID target, and `validator_seal` covers it. **Partially closed:** `validator_boot_target_discover.ps1` (`CLARITY_TIER2_BOOT_DISCOVERY_OK`, unelevated) reports firmware type and Secure Boot state from OS-published signals and resolves the boot manager path via `bcdedit`, which requires Administrator on this host (unelevated runs report `BCDEDIT_REQUIRES_ELEVATION` and `discovery_complete=false` instead of guessing). An opt-in elevated `-MountEspForHash` path hashes the real boot manager and can feed `validator_handoff_target.ps1`; it has not yet been exercised on the dev host. Remaining: run/prove the elevated path, wire discovery into `validator_run`, author a real boot-file baseline, and measured-boot correlation.
 
 5. **Canonical docs referenced by `AGENTS.md` are missing.** `AGENTS.md`/`CLAUDE.md` instruct readers to consult `docs/canonical/IDENTITY.md`, `SPEC.md`, and `CURRENT_STATE.md` "when present" — none existed before this audit. (This document, plus the new `SPEC.md`, `WBS.md`, and `DEFINITION_OF_DONE.md`, begin closing that gap.)
 
