@@ -1,0 +1,27 @@
+{
+  "schema": "clarity.boot_target_discovery.v1",
+  "type": "object",
+  "required": ["schema", "run_id", "created_at_utc", "firmware_type", "secure_boot_state", "discovery_complete", "discovery_errors"],
+  "properties": {
+    "schema": { "const": "clarity.boot_target_discovery.v1" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "created_at_utc": { "type": "string", "minLength": 1 },
+    "firmware_type": { "enum": ["UEFI", "Legacy_BIOS", "unknown"] },
+    "secure_boot_state": { "enum": ["enabled", "disabled", "unsupported", "unknown"] },
+    "firmware_type_source": { "type": ["string", "null"] },
+    "secure_boot_source": { "type": ["string", "null"] },
+    "bootmgr_path": { "type": ["string", "null"] },
+    "bootmgr_device": { "type": ["string", "null"] },
+    "current_loader_path": { "type": ["string", "null"] },
+    "current_loader_device": { "type": ["string", "null"] },
+    "esp_partition_count": { "type": "integer", "minimum": 0 },
+    "esp_mount_attempted": { "type": "boolean" },
+    "esp_mount_succeeded": { "type": "boolean" },
+    "boot_file_full_path": { "type": ["string", "null"] },
+    "boot_file_sha256": { "type": ["string", "null"], "pattern": "^([0-9a-fA-F]{64})?$" },
+    "handoff_target_verdict": { "type": ["string", "null"] },
+    "handoff_target_report_path": { "type": ["string", "null"] },
+    "discovery_complete": { "type": "boolean" },
+    "discovery_errors": { "type": "array", "items": { "type": "string" } }
+  }
+}
