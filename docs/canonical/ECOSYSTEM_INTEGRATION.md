@@ -6,12 +6,13 @@
 |---|---|
 | Service ID | `clarity` |
 | Canonical name | clarity |
-| Ecosystem layer | `unclassified` |
+| Ecosystem family | `anchor` |
+| Ecosystem layer | `protection.pre-os-validation` |
 | Standalone-first | `true` |
 
 ## Role
 
-Repository discovered under C:\dev. Canonical ecosystem role requires classification.
+Standalone pre-OS validator and protected review instrument.
 
 ## This service owns
 
@@ -46,10 +47,10 @@ Repository discovered under C:\dev. Canonical ecosystem role requires classifica
 
 ## Authoritative ecosystem sources
 
-- `C:\dev\_ecosystem\SERVICE_MAP.md`
-- `C:\dev\_ecosystem\service.registry.json`
-- `C:\dev\_ecosystem\AGENT_POLICY.md`
-- `C:\dev\_ecosystem\SHARED_INVARIANTS.md`
+- `C:\dev\Constellation\ecosystem\SERVICE_MAP.md`
+- `C:\dev\Constellation\registry\services.json`
+- `C:\dev\Constellation\ecosystem\AGENT_POLICY.md`
+- `C:\dev\Constellation\ecosystem\SHARED_INVARIANTS.md`
 
 ## Change governance
 
@@ -57,6 +58,6 @@ Changes to this service's ecosystem role, ownership boundaries, upstream depende
 
 1. A proposal under `docs\proposals`.
 2. A documented compatibility impact.
-3. Updated service-map and registry entries.
+3. Updated registry entries in Constellation (`registry/services.json`) and a re-published service map.
 4. Updated positive and negative integration tests.
-5. A new service-map receipt.
+5. A new Constellation doctor receipt.
